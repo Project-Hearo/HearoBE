@@ -17,7 +17,6 @@ class UserTypeEnum(str, enum.Enum):
     user = "user"
     guardian = "guardian"
 
-
 class User(Base):
     __tablename__ = "users"
 
@@ -26,15 +25,14 @@ class User(Base):
     birth_date = Column(Date, nullable=False)
     phone_number = Column(String(20), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
-    face_image_url = Column(String(255))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    sound_events = relationship("SoundEvent", back_populates="user")
-    notifications = relationship("PushNotification", back_populates="user")
-    guardian_links = relationship("UserGuardianLink", back_populates="user")
-    guardian_settings = relationship("GuardianUserSetting", back_populates="user")
-    settings = relationship("UserSetting", back_populates="user", uselist=False)
+    sound_events = relationship("SoundEvent", back_populates="user", cascade="all, delete")
+    notifications = relationship("PushNotification", back_populates="user", cascade="all, delete")
+    guardian_links = relationship("UserGuardianLink", back_populates="user", cascade="all, delete")
+    guardian_settings = relationship("GuardianUserSetting", back_populates="user", cascade="all, delete")
+    settings = relationship("UserSetting", back_populates="user", uselist=False, cascade="all, delete")
 
 class Guardian(Base):
     __tablename__ = "guardians"
@@ -46,8 +44,8 @@ class Guardian(Base):
     password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user_links = relationship("UserGuardianLink", back_populates="guardian")
-    guardian_settings = relationship("GuardianUserSetting", back_populates="guardian")
+    user_links = relationship("UserGuardianLink", back_populates="guardian", cascade="all, delete")
+    guardian_settings = relationship("GuardianUserSetting", back_populates="guardian", cascade="all, delete")
 
 class UserGuardianLink(Base):
     __tablename__ = "user_guardian_links"
@@ -69,11 +67,22 @@ class GuardianUserSetting(Base):
     low_sound_alert = Column(Boolean, default=True)
     battery_alert = Column(Boolean, default=True)
     disconnect_alert = Column(Boolean, default=True)
-
     created_at = Column(DateTime, default=datetime.utcnow)
 
     guardian = relationship("Guardian", back_populates="guardian_settings")
     user = relationship("User", back_populates="guardian_settings")
+
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    setting_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    low_sound_alert = Column(Boolean, default=True)
+    battery_alert = Column(Boolean, default=True)
+    disconnect_alert = Column(Boolean, default=True)
+
+    user = relationship("User", back_populates="settings")
+
 
 class SoundEvent(Base):
     __tablename__ = "sound_events"
@@ -88,7 +97,8 @@ class SoundEvent(Base):
     location_image_url = Column(String(255))
 
     user = relationship("User", back_populates="sound_events")
-    notifications = relationship("PushNotification", back_populates="event")
+    notifications = relationship("PushNotification", back_populates="event", cascade="all, delete")  # ✅ cascade 추가
+
 
 class PushNotification(Base):
     __tablename__ = "push_notifications"
@@ -101,14 +111,3 @@ class PushNotification(Base):
 
     user = relationship("User", back_populates="notifications")
     event = relationship("SoundEvent", back_populates="notifications")
-
-class UserSetting(Base):
-    __tablename__ = "user_settings"
-
-    setting_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
-    low_sound_alert = Column(Boolean, default=True)
-    battery_alert = Column(Boolean, default=True)
-    disconnect_alert = Column(Boolean, default=True)
-
-    user = relationship("User", back_populates="settings")

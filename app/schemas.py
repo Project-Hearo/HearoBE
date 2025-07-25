@@ -143,5 +143,5 @@ class SignupRequest(BaseModel):
     birth_date: date
     phone_number: str
     password: str
+    password_check: str
     user_type: UserTypeEnum
-    face_image_url: Optional[str] = None  # user만 사용할 예정

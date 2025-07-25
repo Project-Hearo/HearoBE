@@ -25,4 +25,5 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="해당 사용자가 없습니다.")
     db.delete(user)
     db.commit()
-    return {"사용자 삭제 완료"}
+    return {"message": "사용자 삭제 완료"}
+

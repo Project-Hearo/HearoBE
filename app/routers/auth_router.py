@@ -9,14 +9,15 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/signup")
 def unified_signup(data: schemas.SignupRequest, db: Session = Depends(get_db)):
 
+    if data.password != data.password_check:
+        raise HTTPException(status_code=400, detail="비밀번호가 일치하지 않습니다.")
+
     name = data.name
     birth_date = data.birth_date
     phone = data.phone_number
     password = utils.hash_password(data.password)
 
     if data.user_type == schemas.UserTypeEnum.user:
-        if not data.face_image_url:
-            raise HTTPException(status_code=400, detail="사용자는 얼굴 이미지가 필요합니다.")
         exists = db.query(models.User).filter(models.User.phone_number == phone).first()
         if exists:
             raise HTTPException(status_code=400, detail="이미 등록된 사용자 연락처입니다.")
@@ -25,7 +26,6 @@ def unified_signup(data: schemas.SignupRequest, db: Session = Depends(get_db)):
             birth_date=birth_date,
             phone_number=phone,
             password=password,
-            face_image_url=data.face_image_url,
             is_active=True,
             created_at=datetime.utcnow()
         )
