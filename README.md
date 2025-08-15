@@ -53,5 +53,14 @@ docker-compose down -v
 1. MySQL Workbench 실행 후 +버튼 눌러 새 연결 생성
 2. Hostname: 127.0.0.1, port: 3310, Username: root, Password: 1234 입력 후 생성
 
-## 추가 정보
-- 프론트엔드 연동 시 CORS는 현재 기준, http://localhost:5173 기준으로 허용되어 있습니다.
+## 푸시알림기능 추가 (8/15 기준)
+- 신규 API: **디바이스 토큰 등록** `PUT /auth/device-token`
+- 신규 API: **로그아웃** `POST /auth/logout`
+- 라우팅: 로그아웃 후 `navigate('/')` 사용
+- 로컬 저장소/세션 플래그 사용: `userId`/`guardianId`/`userName`/`tokenRegistered`
+### 프론트가 해야 할 수정 사항
+
+#### 1) 로그인 직후: FCM 토큰 등록 1회 호출
+
+- **언제:** 로그인 성공 후(응답으로 받은 `user_id` 또는 `guardian_id` 확보 후)
+- **왜:** 같은 기기에서 사용자↔보호자 바꿔 로그인해도 토큰이 **현재 역할**에만 귀속되도록
