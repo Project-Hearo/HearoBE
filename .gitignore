@@ -6,4 +6,3 @@ __pycache__/
 .env
 app/service_account.json
 
-app/service_account.json
