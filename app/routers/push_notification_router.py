@@ -1,3 +1,5 @@
+#알림 전송 후 알림에 대한 기록 저장하는 용도 . 알쓸거면 지워도됨
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List

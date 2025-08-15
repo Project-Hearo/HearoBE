@@ -34,6 +34,8 @@ class User(Base):
     guardian_settings = relationship("GuardianUserSetting", back_populates="user", cascade="all, delete")
     settings = relationship("UserSetting", back_populates="user", uselist=False, cascade="all, delete")
 
+    device_token = Column(String(255), nullable=True)
+
 class Guardian(Base):
     __tablename__ = "guardians"
 
@@ -46,6 +48,8 @@ class Guardian(Base):
 
     user_links = relationship("UserGuardianLink", back_populates="guardian", cascade="all, delete")
     guardian_settings = relationship("GuardianUserSetting", back_populates="guardian", cascade="all, delete")
+
+    device_token = Column(String(255), nullable=True)
 
 class UserGuardianLink(Base):
     __tablename__ = "user_guardian_links"

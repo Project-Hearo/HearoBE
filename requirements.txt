@@ -5,4 +5,8 @@ pymysql
 python-dotenv
 cryptography
 bcrypt
+requests
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
 

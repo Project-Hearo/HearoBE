@@ -114,3 +114,13 @@ def delete_guardian(guardian_id: int, db: Session = Depends(get_db)):
     db.delete(guardian)
     db.commit()
     return {"보호자 삭제 완료"}
+
+@router.post("/{guardian_id}/device-token")
+def update_guardian_device_token(guardian_id: int, payload: schemas.DeviceTokenUpdate, db: Session = Depends(get_db)):
+    guardian = db.query(models.Guardian).filter(models.Guardian.guardian_id == guardian_id).first()
+    if not guardian:
+        raise HTTPException(status_code=404, detail="해당 보호자가 없습니다.")
+
+    guardian.device_token = payload.token
+    db.commit()
+    return {"message": "token 저장 완료"}

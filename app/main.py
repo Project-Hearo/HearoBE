@@ -7,6 +7,10 @@ from app.routers import auth_router, user_router,sound_event_router, push_notifi
 from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 app = FastAPI()
 
 # CORS 설정

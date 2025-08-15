@@ -27,3 +27,12 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "사용자 삭제 완료"}
 
+@router.post("/{user_id}/device-token")
+def update_device_token(user_id: int, payload: schemas.DeviceTokenUpdate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="해당 사용자가 없습니다.")
+
+    user.device_token = payload.token
+    db.commit()
+    return {"message": "token 저장 완료"}

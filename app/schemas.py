@@ -132,6 +132,7 @@ class LoginRequest(BaseModel):
     phone_number: str
     password: str
 
+
 class LoginResponse(BaseModel):
     message: str
     user_id: Optional[int] = None
@@ -145,3 +146,11 @@ class SignupRequest(BaseModel):
     password: str
     password_check: str
     user_type: UserTypeEnum
+
+class DeviceTokenUpdate(BaseModel):
+    token: str
+
+class LogoutRequest(BaseModel):
+    user_type: UserTypeEnum
+    user_id: Optional[int] = None
+    guardian_id: Optional[int] = None
