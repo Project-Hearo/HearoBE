@@ -3,17 +3,17 @@ import time
 time.sleep(3)
 
 from fastapi import FastAPI
-from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router
+from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router
 from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from app.map_generator import generate_wall_and_meta
 import os
 
 load_dotenv()
 app = FastAPI()
 
-# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,3 +32,13 @@ app.include_router(sound_event_router.router)
 app.include_router(push_notification_router.router)
 app.include_router(user_setting_router.router)
 app.include_router(guardian_user_setting_router.router)
+app.include_router(map_router.router)
+
+app.mount("/", StaticFiles(directory="frontend/build", html=True), name="frontend")
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        generate_wall_and_meta()
+    except Exception as e:
+        print("[Map Init Error]", e)
