@@ -1,0 +1,8 @@
+{
+  "active": "test",
+  "profiles": {
+    "test": {
+      "yaml": "maps/test.yaml"
+    }
+  }
+}
