@@ -154,3 +154,13 @@ class LogoutRequest(BaseModel):
     user_type: UserTypeEnum
     user_id: Optional[int] = None
     guardian_id: Optional[int] = None
+
+# SLAM
+class SlamStartReq(BaseModel):
+    session_id: str
+    save_map: bool = True
+    map_name: str = Field(..., min_length=1, max_length=64)
+    duration_sec: int = Field(120, ge=10, le=3600)
+
+class EnqueueResp(BaseModel):
+    req_id: str

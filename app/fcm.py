@@ -29,6 +29,10 @@ def send_fcm_v1(token: str, title: str, body: str):
     message = {
         "message": {
             "token": token,
+            "notification": {
+                "title": title,
+                "body": body
+            },
             "data": {
                 "title": title,
                 "body": body

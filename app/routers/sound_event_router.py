@@ -155,3 +155,9 @@ def read_user_events_by_date(
     ).all()
 
     return events
+
+@router.get("/user/{user_id}/events", response_model=List[schemas.SoundEventResponse])
+def read_user_all_events(user_id: int, db: Session = Depends(get_db)):
+    return db.query(models.SoundEvent).filter(
+        models.SoundEvent.user_id == user_id
+    ).all()

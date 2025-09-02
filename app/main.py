@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 from app.map_generator import generate_wall_and_meta
 import os
 
+from app.mqtt_bus import mqtt_bus
+from app.routers import slam
+
 load_dotenv()
 app = FastAPI()
 
@@ -36,7 +39,13 @@ app.include_router(map_router.router)
 
 app.mount("/", StaticFiles(directory="frontend/build", html=True), name="frontend")
 
+app.include_router(slam.router)
+
 @app.on_event("startup")
+def _startup():
+    # MQTT 브로커 연결 시작
+    mqtt_bus.start()
+
 def startup_event():
     try:
         generate_wall_and_meta()
