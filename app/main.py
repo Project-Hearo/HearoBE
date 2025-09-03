@@ -37,7 +37,7 @@ app.include_router(user_setting_router.router)
 app.include_router(guardian_user_setting_router.router)
 app.include_router(map_router.router)
 
-app.mount("/", StaticFiles(directory="frontend/build", html=True), name="frontend")
+
 
 app.include_router(slam.router)
 
@@ -51,3 +51,6 @@ def startup_event():
         generate_wall_and_meta()
     except Exception as e:
         print("[Map Init Error]", e)
+
+
+app.mount("/", StaticFiles(directory="frontend/build", html=True), name="frontend")
