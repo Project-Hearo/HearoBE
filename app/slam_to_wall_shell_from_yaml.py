@@ -17,7 +17,7 @@ import numpy as np
 import yaml
 
 # ===== 경로/설정 (프로젝트에 맞게 한 번만 수정) ==========================
-BASE_DIR     = Path(__file__).resolve().parent          # ./python
+BASE_DIR     = Path(__file__).resolve().parent          # ./app
 CONFIG_PATH  = (BASE_DIR.parent / "public" / "map-config.json").resolve()
 OUTPUT_DIR   = (BASE_DIR.parent / "public").resolve()
 OUT_WALL     = OUTPUT_DIR / "wall_shell.json"
