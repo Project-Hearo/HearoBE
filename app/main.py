@@ -3,7 +3,7 @@ import time
 time.sleep(3)
 
 from fastapi import FastAPI
-from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router
+from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router, battery_router
 from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +41,7 @@ app.include_router(user_setting_router.router)
 app.include_router(guardian_user_setting_router.router)
 app.include_router(map_router.router)
 app.include_router(slam.router)
+app.include_router(battery_router.router)
 
 
 APP_DIR = Path(__file__).resolve().parent

@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import date, datetime
 from enum import Enum
+
 
 class SoundTypeEnum(str, Enum):
     danger = "danger"
@@ -169,3 +170,13 @@ class Pose(BaseModel):
     x: float
     y: float
 
+
+class BatteryReport(BaseModel):
+    device_id: Optional[str] = Field(None, description="장치 식별자(선택)")
+    level: float = Field(..., ge=0, le=100, description="배터리 잔량 %")
+    is_charging: Optional[bool] = Field(None, description="충전 중 여부")
+    ts: Optional[datetime] = Field(None, description="측정 시각(없으면 서버가 now)")
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"device_id":"robot-1","level":87.5,"is_charging":False}
+    })
