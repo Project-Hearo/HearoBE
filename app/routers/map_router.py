@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
+from app import schemas
 import asyncio
 import shutil
 
@@ -32,12 +33,12 @@ async def get_meta():
 
 # ================= Pose API =================
 @router.post("/pose")
-async def post_pose(pose: dict):
+async def post_pose(pose: schemas.Pose):
     """
     로봇이 좌표(x, y)를 보내면
     연결된 모든 WebSocket 클라이언트에게 전송
     """
-    msg = {"x": float(pose["x"]), "y": float(pose["y"])}
+    msg = {"x": float(pose.x), "y": float(pose.y)}
     dead = []
     for ws in list(clients):
         try:

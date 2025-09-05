@@ -164,3 +164,7 @@ class SlamStartReq(BaseModel):
 
 class EnqueueResp(BaseModel):
     req_id: str
+
+class Pose(BaseModel):
+    x: float
+    y: float
