@@ -13,20 +13,26 @@ router = APIRouter(prefix="/sound-events", tags=["Sound Events"])
 @router.post("/", response_model=schemas.SoundEventResponse)
 def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db)):
 
-
-    db_event = models.SoundEvent(**(event.model_dump() if hasattr(event, "model_dump") else event.dict()))
+    payload = event.model_dump() if hasattr(event, "model_dump") else event.dict()
+    db_event = models.SoundEvent(**payload)
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
 
-
     sound_type_map = {"danger": "위험", "help": "도움", "warning": "경고"}
     sound_type_ko = sound_type_map.get(event.sound_type, event.sound_type)
 
-
-    detail = (event.sound_detail or "").strip()
-    if not detail:
-        detail = f"{sound_type_ko} 소리가 감지되었습니다."
+    raw = (event.sound_detail or "").strip()
+    suffix = " 소리가 감지되었습니다."
+    if raw:
+        if raw.endswith("소리가 감지되었습니다."):
+            body_text = raw
+        elif raw.endswith("소리가 감지되었습니다"):
+            body_text = raw + "."
+        else:
+            body_text = raw + suffix
+    else:
+        body_text = f"{sound_type_ko}{suffix}"
 
     user = db.query(models.User).filter(models.User.user_id == event.user_id).first()
     user_name = getattr(user, "name", None) if user else None
@@ -36,7 +42,7 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         send_fcm_v1(
             token=user.device_token,
             title="새로운 소리 감지",
-            body=detail,
+            body=body_text,
         )
     else:
         print("user의 FCM 토큰이 없습니다. (사용자 푸시는 스킵)")
@@ -83,13 +89,11 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         send_fcm_v1(
             token=token,
             title="보호자 알림",
-            body=f"{who}: {detail}",
+            body=f"{who}: {body_text}",
         )
         seen.add(token)
 
     return db_event
-
-
 
 @router.get("/", response_model=List[schemas.SoundEventResponse])
 def read_events(db: Session = Depends(get_db)):
