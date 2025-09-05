@@ -13,53 +13,48 @@ router = APIRouter(prefix="/sound-events", tags=["Sound Events"])
 @router.post("/", response_model=schemas.SoundEventResponse)
 def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db)):
 
-    db_event = models.SoundEvent(**event.dict())
+
+    db_event = models.SoundEvent(**(event.model_dump() if hasattr(event, "model_dump") else event.dict()))
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
 
-    sound_type_map = {
-        "danger": "위험",
-        "help": "도움",
-        "warning": "경고"
-    }
+
+    sound_type_map = {"danger": "위험", "help": "도움", "warning": "경고"}
     sound_type_ko = sound_type_map.get(event.sound_type, event.sound_type)
+
+
+    detail = (event.sound_detail or "").strip()
+    if not detail:
+        detail = f"{sound_type_ko} 소리가 감지되었습니다."
 
     user = db.query(models.User).filter(models.User.user_id == event.user_id).first()
     user_name = getattr(user, "name", None) if user else None
     who = f"{user_name}님" if user_name else f"사용자(ID:{event.user_id})"
 
-    #  사용자에게 푸시
     if user and getattr(user, "device_token", None):
         send_fcm_v1(
             token=user.device_token,
-            title="새로운 소리 감지!",
-            body=f"{sound_type_ko} 소리가 감지되었습니다."
+            title="새로운 소리 감지",
+            body=detail,
         )
     else:
         print("user의 FCM 토큰이 없습니다. (사용자 푸시는 스킵)")
 
-    #  보호자에게 푸시
     guardian_ids = []
     guardians = []
-
     try:
-
         if hasattr(models, "UserGuardianLink"):
             links = db.query(models.UserGuardianLink).filter(
                 models.UserGuardianLink.user_id == event.user_id
             ).all()
             guardian_ids = [l.guardian_id for l in links]
-
-
         elif hasattr(models, "Guardian") and hasattr(models.Guardian, "user_id"):
             guardians = db.query(models.Guardian).filter(
                 models.Guardian.user_id == event.user_id
             ).all()
-
     except Exception as e:
         print("보호자 링크 조회 중 예외:", e)
-
 
     if not guardians:
         if guardian_ids and hasattr(models, "Guardian"):
@@ -69,17 +64,12 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         else:
             guardians = []
 
-
     allow_map = {}
     if hasattr(models, "GuardianUserSetting"):
         settings = db.query(models.GuardianUserSetting).filter(
             models.GuardianUserSetting.user_id == event.user_id
         ).all()
-        # 컬럼명이 danger/help/warning 가정
-        allow_map = {
-            s.guardian_id: getattr(s, event.sound_type, True) for s in settings
-        }
-
+        allow_map = {s.guardian_id: getattr(s, event.sound_type, True) for s in settings}
 
     seen = set()
     for g in guardians:
@@ -87,14 +77,13 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         gid = getattr(g, "guardian_id", None)
         if not token or token in seen:
             continue
-
         if allow_map and gid is not None and allow_map.get(gid, True) is False:
             continue
 
         send_fcm_v1(
             token=token,
             title="보호자 알림",
-            body=f"{who}에게 {sound_type_ko} 소리가 감지되었습니다."
+            body=f"{who}: {detail}",
         )
         seen.add(token)
 
