@@ -38,7 +38,7 @@ async def post_battery(rep: BatteryReport):
         except ValueError:
             pass
 
-    return {"ok": True}
+    return {"level": data["level"]}
 
 @router.get("/latest")
 async def get_latest():
