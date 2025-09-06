@@ -159,10 +159,8 @@ class LogoutRequest(BaseModel):
 
 # SLAM
 class SlamStartReq(BaseModel):
-    session_id: str
-    save_map: bool = True
-    map_name: str = Field(..., min_length=1, max_length=64)
-    duration_sec: int = Field(120, ge=10, le=3600)
+    save_map: bool
+    map_name: str
 
 class EnqueueResp(BaseModel):
     req_id: str
