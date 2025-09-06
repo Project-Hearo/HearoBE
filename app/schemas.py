@@ -87,6 +87,7 @@ class SoundEventBase(BaseModel):
     occurred_at: datetime
     sound_icon: Optional[str] = None
     location_image_url: Optional[str] = None
+    decibel: Optional[float] = None
 
 class SoundEventCreate(SoundEventBase):
     user_id: int

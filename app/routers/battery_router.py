@@ -1,4 +1,3 @@
-# app/routers/battery_router.py
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from collections import deque

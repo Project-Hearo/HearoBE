@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from app.map_generator import generate_wall_and_meta
 from app.ws import ws_manager
+
 import os
 
 from app.mqtt_bus import mqtt_bus

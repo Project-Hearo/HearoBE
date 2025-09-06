@@ -8,7 +8,7 @@ from app.fcm import send_fcm_v1
 
 router = APIRouter(prefix="/call-events", tags=["Call Events"])
 
-@router.post("/", response_model=schemas.CallEventResponse)
+@router.post("", response_model=schemas.CallEventResponse)
 def create_call_event(event: schemas.CallEventCreate, db: Session = Depends(get_db)):
 
     user = db.query(models.User).filter(models.User.user_id == event.user_id).first()

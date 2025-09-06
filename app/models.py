@@ -100,6 +100,7 @@ class SoundEvent(Base):
     occurred_at = Column(DateTime, nullable=False)
     sound_icon = Column(String(255))
     location_image_url = Column(String(255))
+    decibel = Column(Float, nullable=True)
 
     user = relationship("User", back_populates="sound_events")
     notifications = relationship("PushNotification", back_populates="event", cascade="all, delete")  # ✅ cascade 추가

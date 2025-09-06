@@ -34,6 +34,7 @@ class MqttBus:
         self.lock = threading.Lock()
         self.pose_sink = None
 
+
     def set_pose_sink(self, coro_fn):
         """coro_fn(data: dict) -> awaitable"""
         self.pose_sink = coro_fn
@@ -75,6 +76,9 @@ class MqttBus:
 
         client.subscribe("app/+/pose", qos=1)
         client.message_callback_add("app/+/pose", self._on_pose_message)
+
+        #client.subscribe("app/+/event/sound", qos=1)
+        #client.message_callback_add("app/+/event/sound", self._on_sound_message)
 
     def _on_message(self, client, userdata, msg):
         try:
