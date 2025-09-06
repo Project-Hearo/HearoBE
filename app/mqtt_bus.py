@@ -13,6 +13,9 @@ DEFAULT_ROBOT_ID = os.getenv("ROBOT_ID", "robot001")
 def app_cmd_topic(robot_id: str, sub: str) -> str:
     return f"app/{robot_id}/cmd/{sub}"
 
+def _new_req_id() -> str:
+    return f"REQ-{uuid.uuid4().hex}"
+
 def app_resp_topic(robot_id: str, sub: str) -> str:
     return f"app/{robot_id}/resp/{sub}"
 
@@ -110,16 +113,30 @@ class MqttBus:
 
     def publish_cmd(self, robot_id: Optional[str], subtopic: str, request_dict: dict) -> str:
         rid = robot_id or DEFAULT_ROBOT_ID
-        req_id = request_dict.get("req_id") or uuid.uuid4().hex
+
+        # 항상 서버에서 req_id 생성(외부가 넣어줬다면 그걸 사용)
+        req_id = (request_dict or {}).get("req_id") or _new_req_id()
+
+        # request 블록 보정
+        request_block = (request_dict or {}).get("request") or {}
         payload = {
             "req_id": req_id,
-            "request": request_dict["request"],
+            "request": request_block,
         }
-        self.client.publish(
-            app_cmd_topic(rid, subtopic),
+
+        topic = app_cmd_topic(rid, subtopic)
+        info = self.client.publish(
+            topic,
             json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             qos=1, retain=False
         )
-        return req_id
+
+        return req_id  # 필요하면 topic도 함께 리턴하도록 바꿔도 OK
+
+    def start(self):
+        self.client.reconnect_delay_set(min_delay=1, max_delay=30)  # ← 추가 권장
+        self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
+        threading.Thread(target=self.client.loop_forever, daemon=True).start()
+
 
 mqtt_bus = MqttBus()

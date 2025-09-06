@@ -8,16 +8,15 @@ from app.schemas import SlamStartReq, EnqueueResp
 router = APIRouter(prefix="/robots", tags=["SLAM"])
 
 # 1) SLAM 시작: HTTP -> MQTT Publish
-@router.post("/{robot_id}/slam/start", response_model=EnqueueResp, status_code=202)
-def slam_start(robot_id: str = Path(...), req: SlamStartReq = Body(...)):
-    req_id = mqtt_bus.publish_cmd(robot_id, "slam/start", {
-        "request": {
-            "session_id": req.session_id,
-            "save_map": req.save_map,
-            "map_name": req.map_name,
-            "duration_sec": req.duration_sec
-        }
-    })
+@router.post("/{robot_id}/slam/start")
+def slam_start(robot_id: str, req: SlamStartReq):
+    # mqtt_bus에 publish_cmd 호출
+
+    req_id = mqtt_bus.publish_cmd(
+        robot_id,
+        "slam/start",
+        {"request": req.dict()}   # publish_cmd가 이걸 포맷팅해서 MQTT로 보냄
+    )
     return {"req_id": req_id}
 
 # 2) 실시간 스트림(SSE): MQTT resp -> HTTP
