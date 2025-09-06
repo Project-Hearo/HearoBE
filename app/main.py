@@ -3,12 +3,13 @@ import time
 time.sleep(3)
 
 from fastapi import FastAPI
-from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router, battery_router
+from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router, battery_router, pose_ws_router, call_router
 from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from app.map_generator import generate_wall_and_meta
+from app.ws import ws_manager
 import os
 
 from app.mqtt_bus import mqtt_bus
@@ -40,8 +41,11 @@ app.include_router(push_notification_router.router)
 app.include_router(user_setting_router.router)
 app.include_router(guardian_user_setting_router.router)
 app.include_router(map_router.router)
+
+app.include_router(call_router.router)
 app.include_router(slam.router)
 app.include_router(battery_router.router)
+app.include_router(pose_ws_router.router)
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -70,7 +74,6 @@ def get_meta():
         raise HTTPException(404, detail=f"{p} not found")
     return FileResponse(p)
 
-# /maps/* (yaml/pgm/png 등) 정적 서빙
 # public/maps 가 없으면 자동 생성
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
 app.mount("/maps", StaticFiles(directory=str(PUBLIC_DIR / "maps"), html=False), name="maps")
@@ -78,6 +81,10 @@ app.mount("/maps", StaticFiles(directory=str(PUBLIC_DIR / "maps"), html=False), 
 @app.on_event("startup")
 def _startup():
     # MQTT 브로커 연결
+    async def _pose_sink(data: dict):
+        await ws_manager.broadcast_json(data)
+    mqtt_bus.set_pose_sink(_pose_sink)
+
     mqtt_bus.start()
     # 맵 관련 JSON 생성
     try:

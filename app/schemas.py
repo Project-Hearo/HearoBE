@@ -169,6 +169,7 @@ class EnqueueResp(BaseModel):
 class Pose(BaseModel):
     x: float
     y: float
+    theta: Optional[float] = None
 
 
 class BatteryReport(BaseModel):
@@ -180,3 +181,17 @@ class BatteryReport(BaseModel):
     model_config = ConfigDict(json_schema_extra={
         "example": {"device_id":"robot-1","level":87.5,"is_charging":False}
     })
+
+
+class CallEventBase(BaseModel):
+    user_id: int
+
+class CallEventCreate(CallEventBase):
+    pass
+
+class CallEventResponse(CallEventBase):
+    call_id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True

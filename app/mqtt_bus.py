@@ -1,6 +1,7 @@
 import json, os, uuid, threading, queue
 from typing import Dict, Optional
 import paho.mqtt.client as mqtt
+import asyncio
 
 MQTT_HOST = os.getenv("MQTT_HOST", "broker")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -31,7 +32,39 @@ class MqttBus:
         self.streams: Dict[str, "queue.Queue[dict]"] = {}
         self.last_msg: Dict[str, dict] = {}
         self.lock = threading.Lock()
+        self.pose_sink = None
 
+    def set_pose_sink(self, coro_fn):
+        """coro_fn(data: dict) -> awaitable"""
+        self.pose_sink = coro_fn
+
+    # pose 전용 콜백 (req_id 필요 없음)
+    def _on_pose_message(self, client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode("utf-8"))
+            parts = msg.topic.split("/")
+            robot_id = parts[1] if len(parts) >= 3 else "robot"
+
+            x = float(data["x"])
+            y = float(data["y"])
+            theta = data.get("theta")  # optional
+
+
+            payload = {
+                "robot_id": robot_id,
+                "x": x, "y": y,
+                "theta": theta,  #라디안
+            }
+
+            if self.pose_sink:
+                asyncio.run(self.pose_sink(payload))
+            else:
+                # 훅 미주입 시 직접 WS로
+                from app.ws import ws_manager
+                asyncio.run(ws_manager.broadcast_json(payload))
+
+        except Exception as e:
+            print(f"[mqtt_bus:pose] bad payload: {e}, raw={msg.payload!r}")
     def start(self):
         self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         threading.Thread(target=self.client.loop_forever, daemon=True).start()
@@ -39,6 +72,9 @@ class MqttBus:
     def _on_connect(self, client, userdata, flags, rc):
         client.subscribe("app/+/resp/#", qos=1)
         client.subscribe("app/+/status/online", qos=1)
+
+        client.subscribe("app/+/pose", qos=1)
+        client.message_callback_add("app/+/pose", self._on_pose_message)
 
     def _on_message(self, client, userdata, msg):
         try:

@@ -35,6 +35,7 @@ class User(Base):
     settings = relationship("UserSetting", back_populates="user", uselist=False, cascade="all, delete")
 
     device_token = Column(String(255), nullable=True)
+    call_events = relationship("CallEvent", back_populates="user", cascade="all, delete")
 
 class Guardian(Base):
     __tablename__ = "guardians"
@@ -115,3 +116,12 @@ class PushNotification(Base):
 
     user = relationship("User", back_populates="notifications")
     event = relationship("SoundEvent", back_populates="notifications")
+
+class CallEvent(Base):
+    __tablename__ = "call_events"
+
+    call_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="call_events")
