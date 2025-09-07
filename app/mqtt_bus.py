@@ -82,8 +82,8 @@ class MqttBus:
         client.subscribe("app/+/pose", qos=1)
         client.message_callback_add("app/+/pose", self._on_pose_message)
 
-        client.subscribe("robot/+/telemetry/location", qos=1)
-        client.message_callback_add("robot/+/telemetry/location", self._on_location_message)
+        client.subscribe("robot/+/telemetry/#", qos=1)
+        client.message_callback_add("robot/+/telemetry/#", self._on_location_message)
 
         #client.subscribe("app/+/event/sound", qos=1)
         #client.message_callback_add("app/+/event/sound", self._on_sound_message)
@@ -120,8 +120,6 @@ class MqttBus:
 
         payload = {"robot_id": robot_id, **norm}  # {robot_id,x,y,theta?}
 
-
-        # 2) pose_sink만 등록되어 있다면 그쪽으로도 전달(하위호환)
         if self.pose_sink:
             try:
                 asyncio.run(self.pose_sink(payload))
@@ -129,7 +127,6 @@ class MqttBus:
             except Exception as e:
                 print("[mqtt_bus:location] pose_sink error:", e)
 
-        # 3) 아무 훅도 없으면 WS 브로드캐스트로 직접
         try:
             from app.ws import ws_manager
             asyncio.run(ws_manager.broadcast_json(payload))
