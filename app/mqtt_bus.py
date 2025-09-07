@@ -82,8 +82,8 @@ class MqttBus:
         client.subscribe("app/+/pose", qos=1)
         client.message_callback_add("app/+/pose", self._on_pose_message)
 
-        client.subscribe("robot/+/telemetry/#", qos=1)
-        client.message_callback_add("robot/+/telemetry/#", self._on_location_message)
+        client.subscribe("robot/+/telemetry/location", qos=1)
+        client.message_callback_add("robot/+/telemetry/location", self._on_location_message)
 
         #client.subscribe("app/+/event/sound", qos=1)
         #client.message_callback_add("app/+/event/sound", self._on_sound_message)
