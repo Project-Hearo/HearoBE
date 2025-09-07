@@ -37,7 +37,6 @@ class MqttBus:
         self.lock = threading.Lock()
         self.pose_sink = None
 
-
     def set_pose_sink(self, coro_fn):
         """coro_fn(data: dict) -> awaitable"""
         self.pose_sink = coro_fn
@@ -69,7 +68,10 @@ class MqttBus:
 
         except Exception as e:
             print(f"[mqtt_bus:pose] bad payload: {e}, raw={msg.payload!r}")
+
     def start(self):
+
+        self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         threading.Thread(target=self.client.loop_forever, daemon=True).start()
 
@@ -79,6 +81,9 @@ class MqttBus:
 
         client.subscribe("app/+/pose", qos=1)
         client.message_callback_add("app/+/pose", self._on_pose_message)
+
+        client.subscribe("robot/+/telemetry/location", qos=1)
+        client.message_callback_add("robot/+/telemetry/location", self._on_location_message)
 
         #client.subscribe("app/+/event/sound", qos=1)
         #client.message_callback_add("app/+/event/sound", self._on_sound_message)
@@ -96,6 +101,40 @@ class MqttBus:
             q = self.streams.get(req_id)
         if q:
             q.put(payload)
+
+    def _on_location_message(self, client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode("utf-8"))
+        except Exception as e:
+            print(f"[mqtt_bus:location] bad json: {e}, raw={msg.payload!r}")
+            return
+
+        # robot/{robot_id}/telemetry/location
+        parts = msg.topic.split("/")
+        robot_id = parts[1] if len(parts) >= 4 else "robot"
+
+        norm = _normalize_location_payload(data)
+        if not norm:
+            print(f"[mqtt_bus:location] missing x/y in payload: {data}")
+            return
+
+        payload = {"robot_id": robot_id, **norm}  # {robot_id,x,y,theta?}
+
+
+        # 2) pose_sink만 등록되어 있다면 그쪽으로도 전달(하위호환)
+        if self.pose_sink:
+            try:
+                asyncio.run(self.pose_sink(payload))
+                return
+            except Exception as e:
+                print("[mqtt_bus:location] pose_sink error:", e)
+
+        # 3) 아무 훅도 없으면 WS 브로드캐스트로 직접
+        try:
+            from app.ws import ws_manager
+            asyncio.run(ws_manager.broadcast_json(payload))
+        except Exception as e:
+            print("[mqtt_bus:location] ws broadcast error:", e)
 
     def create_stream(self, req_id: str):
         q: "queue.Queue[dict]" = queue.Queue()
@@ -133,10 +172,23 @@ class MqttBus:
 
         return req_id  # 필요하면 topic도 함께 리턴하도록 바꿔도 OK
 
-    def start(self):
-        self.client.reconnect_delay_set(min_delay=1, max_delay=30)  # ← 추가 권장
-        self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
-        threading.Thread(target=self.client.loop_forever, daemon=True).start()
 
+def _normalize_location_payload(raw: dict):
+    x = y = theta = None
+    if isinstance(raw.get("x"), (int, float)) and isinstance(raw.get("y"), (int, float)):
+        x, y = float(raw["x"]), float(raw["y"])
+        if isinstance(raw.get("theta"), (int, float)): theta = float(raw["theta"])
+    elif isinstance(raw.get("pos"), dict):
+        p = raw["pos"]
+        if isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float)):
+            x, y = float(p["x"]), float(p["y"])
+        if isinstance(raw.get("yaw"), (int, float)): theta = float(raw["yaw"])
+    elif isinstance(raw.get("position"), (list, tuple)) and len(raw["position"]) >= 2:
+        x, y = float(raw["position"][0]), float(raw["position"][1])
+        if len(raw["position"]) >= 3 and isinstance(raw["position"][2], (int, float)):
+            theta = float(raw["position"][2])
+    if x is None or y is None:
+        return None
+    return {"x": x, "y": y, **({"theta": theta} if theta is not None else {})}
 
 mqtt_bus = MqttBus()
