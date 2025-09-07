@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from app.map_generator import generate_wall_and_meta
 from app.ws import ws_manager
+from fastapi import Response
 
 import os
 
@@ -54,26 +55,52 @@ PROJ_DIR = APP_DIR.parent
 PUBLIC_DIR = PROJ_DIR / "public"
 FRONTEND_DIR = PROJ_DIR / "frontend" / "build"
 
+
 @app.get("/map-config.json")
 def get_map_config():
     p = PUBLIC_DIR / "map-config.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
-    return FileResponse(p)
+    return Response(
+        content=p.read_text(encoding="utf-8"),
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 @app.get("/wall_shell.json")
 def get_wall_shell():
     p = PUBLIC_DIR / "wall_shell.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
-    return FileResponse(p)
+    return Response(
+        content=p.read_text(encoding="utf-8"),
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 @app.get("/meta.json")
 def get_meta():
     p = PUBLIC_DIR / "meta.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
-    return FileResponse(p)
+    return Response(
+        content=p.read_text(encoding="utf-8"),
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
 
 # public/maps 가 없으면 자동 생성
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
