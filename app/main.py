@@ -95,3 +95,4 @@ def _startup():
 
 
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+#app.mount("/", StaticFiles(directory="public", html=True), name="public")

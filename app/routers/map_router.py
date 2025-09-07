@@ -1,24 +1,64 @@
+# app/routers/map_router.py (또는 네 파일명)
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
-from app import schemas
-import asyncio
-import shutil
+import asyncio, shutil, json
 
-# utils 안에 있는 함수 불러오기
 from app.map_generator import generate_wall_and_meta
 
 router = APIRouter(prefix="/map", tags=["Map"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # ./app
+BASE_DIR = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = BASE_DIR.parent / "public"
-MAPS_DIR = PUBLIC_DIR / "maps"  # 업로드 지도 저장용 폴더
+MAPS_DIR = PUBLIC_DIR / "maps"
 WALL_FILE = PUBLIC_DIR / "wall_shell.json"
 META_FILE = PUBLIC_DIR / "meta.json"
+CONFIG    = PUBLIC_DIR / "map-config.json"
 
-clients = set()
+clients: set[WebSocket] = set()
 
-# ================= 파일 반환 =================
+async def broadcast_json(msg: dict, exclude: WebSocket | None = None):
+    dead = []
+    data = json.dumps(msg)
+    for ws in list(clients):
+        if exclude is not None and ws is exclude:
+            continue
+        try:
+            await ws.send_text(data)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        clients.discard(ws)
+
+@router.websocket("/ws")
+async def ws_endpoint(ws: WebSocket):
+    await ws.accept()
+    clients.add(ws)
+    print(f"[ws] client connected ({len(clients)})")
+    try:
+        while True:
+            # 로봇/클라이언트가 보낸 메시지 수신
+            msg = await ws.receive_text()
+            try:
+                obj = json.loads(msg)
+            except Exception:
+                continue
+
+            # 1) 포즈: {x, y} → 모두에게 브로드캐스트
+            if isinstance(obj, dict) and \
+               isinstance(obj.get("x"), (int, float)) and \
+               isinstance(obj.get("y"), (int, float)):
+                await broadcast_json({"x": float(obj["x"]), "y": float(obj["y"])}, exclude=ws)
+                continue
+
+            # 2) 핑/유지용 메시지면 무시 가능
+            # if obj.get("type") == "ping": await ws.send_text('{"type":"pong"}')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        clients.discard(ws)
+        print(f"[ws] client disconnected ({len(clients)})")
+
 @router.get("/wall")
 async def get_wall():
     if not WALL_FILE.exists():
@@ -31,48 +71,8 @@ async def get_meta():
         return JSONResponse({"error": "meta.json not found"}, status_code=404)
     return FileResponse(META_FILE)
 
-# ================= Pose API =================
-@router.post("/pose")
-async def post_pose(pose: schemas.Pose):
-    """
-    로봇이 좌표(x, y)를 보내면
-    연결된 모든 WebSocket 클라이언트에게 전송
-    """
-    msg = {"x": float(pose.x), "y": float(pose.y)}
-    dead = []
-    for ws in list(clients):
-        try:
-            await ws.send_json(msg)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        clients.discard(ws)
-    return {"ok": True}
-
-# ================= WebSocket =================
-@router.websocket("/ws")
-async def ws_endpoint(ws: WebSocket):
-    await ws.accept()
-    clients.add(ws)
-    print(f"[ws] client connected ({len(clients)})")
-    try:
-        while True:
-            await asyncio.sleep(60)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        clients.discard(ws)
-        print(f"[ws] client disconnected ({len(clients)})")
-
-# ================= 지도 업로드 =================
 @router.post("/upload")
 async def upload_map(yaml: UploadFile = File(...), pgm: UploadFile = File(...)):
-    """
-    로봇이 map.yaml + map.pgm 파일을 업로드하면
-    1) 서버에 저장
-    2) slam_to_wall_shell_from_yaml 실행 (wall/meta.json 갱신)
-    3) 모든 WebSocket 클라이언트에게 "map_updated" 알림
-    """
     MAPS_DIR.mkdir(parents=True, exist_ok=True)
 
     yaml_path = MAPS_DIR / yaml.filename
@@ -83,21 +83,24 @@ async def upload_map(yaml: UploadFile = File(...), pgm: UploadFile = File(...)):
     with open(pgm_path, "wb") as f:
         shutil.copyfileobj(pgm.file, f)
 
-    # wall_shell.json + meta.json 재생성
+    # map-config.json 업데이트 (생성기가 이걸 읽음)
+    cfg = {
+        "active": "latest",
+        "profiles": {
+            "latest": {
+                "yaml": f"maps/{yaml.filename}"
+            }
+        }
+    }
+    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 변환 실행
     try:
         generate_wall_and_meta()
     except Exception as e:
         return JSONResponse({"error": f"map generation failed: {e}"}, status_code=500)
 
-    # WebSocket 클라이언트에 알림
-    msg = {"event": "map_updated"}
-    dead = []
-    for ws in list(clients):
-        try:
-            await ws.send_json(msg)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        clients.discard(ws)
+    # 맵 갱신 알림
+    await broadcast_json({"event": "map_updated"})
 
     return {"ok": True, "yaml": str(yaml_path), "pgm": str(pgm_path)}
