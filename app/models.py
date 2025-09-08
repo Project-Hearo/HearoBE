@@ -98,8 +98,8 @@ class SoundEvent(Base):
     sound_detail = Column(String(255))
     angle = Column(Float)
     occurred_at = Column(DateTime, nullable=False)
-    sound_icon = Column(String(255))
-    location_image_url = Column(String(255))
+    sound_icon = Column(String(255), nullable=True)
+    location_image_url = Column(String(255), nullable=True)
     decibel = Column(Float, nullable=True)
 
     user = relationship("User", back_populates="sound_events")
