@@ -2,7 +2,7 @@
   "active": "latest",
   "profiles": {
     "latest": {
-      "yaml": "maps/map1 (1).yaml"
+      "yaml": "maps/map1.yaml"
     }
   }
 }
