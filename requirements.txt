@@ -13,4 +13,4 @@ python-multipart
 uvicorn[standard]
 opencv-python-headless
 paho-mqtt>=2.1.0
-
+pillow
