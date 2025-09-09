@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Response, status, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app import models, schemas, utils
@@ -80,6 +80,10 @@ def unlink_user(guardian_id: int, user_id: int, db: Session = Depends(get_db)):
     return {"detail": "연결 해제 완료"}
 
 
+@router.get("/0/users", include_in_schema=False)
+def noop_guardian_zero():
+    # 0번 가디언 요청은 조용히 무시
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # 보호자 기본 CRUD
 @router.get("/", response_model=List[schemas.GuardianResponse])
