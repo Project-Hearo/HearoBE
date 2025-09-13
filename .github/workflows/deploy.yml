@@ -17,8 +17,10 @@ jobs:
 
       - name: Build & Push image
         run: |
-          SHA_TAG=${{ env.IMAGE_NAME }}:${{ github.sha }}
-          LATEST_TAG=${{ env.IMAGE_NAME }}:latest
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_REPO="ghcr.io/${OWNER_LC}/hearo-be"
+          SHA_TAG="${IMAGE_REPO}:${{ github.sha }}"
+          LATEST_TAG="${IMAGE_REPO}:latest"
           docker build -t "$SHA_TAG" .
           docker push "$SHA_TAG"
           docker tag "$SHA_TAG" "$LATEST_TAG"
