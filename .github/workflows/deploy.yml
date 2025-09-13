@@ -1,0 +1,41 @@
+name: deploy
+on:
+  push:
+    branches: [ main ]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hearo-be
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR (push)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Build & Push image
+        run: |
+          SHA_TAG=${{ env.IMAGE_NAME }}:${{ github.sha }}
+          LATEST_TAG=${{ env.IMAGE_NAME }}:latest
+          docker build -t "$SHA_TAG" .
+          docker push "$SHA_TAG"
+          docker tag "$SHA_TAG" "$LATEST_TAG"
+          docker push "$LATEST_TAG"
+
+  deploy:
+    needs: build_and_push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/HearoBE
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            docker compose pull backend
+            docker compose up -d
+            docker image prune -f
