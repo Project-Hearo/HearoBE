@@ -124,7 +124,6 @@ def _startup():
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 else:
-
     @app.get("/")
     def _root():
         return {"ok": True, "msg": f"frontend not found at {FRONTEND_DIR}"}
