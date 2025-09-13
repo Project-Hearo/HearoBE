@@ -129,4 +129,3 @@ else:
     def _root():
         return {"ok": True, "msg": f"frontend not found at {FRONTEND_DIR}"}
 #app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-#app.mount("/", StaticFiles(directory="public", html=True), name="public")
