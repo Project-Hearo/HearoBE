@@ -29,7 +29,7 @@ services:
       <<: *health_defaults
 
   backend:
-    image: ghcr.io/project-hearo/hearo-be:latest
+    image: ghcr.io/mogld/hearo-be:latest
     container_name: fastapi_backend
     restart: unless-stopped
     env_file:
