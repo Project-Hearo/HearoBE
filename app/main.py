@@ -121,6 +121,12 @@ def _startup():
     except Exception as e:
         print("[Map Init Error]", e)
 
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+else:
 
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    @app.get("/")
+    def _root():
+        return {"ok": True, "msg": f"frontend not found at {FRONTEND_DIR}"}
+#app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 #app.mount("/", StaticFiles(directory="public", html=True), name="public")
