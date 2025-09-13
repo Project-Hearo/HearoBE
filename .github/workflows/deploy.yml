@@ -3,19 +3,18 @@ on:
   push:
     branches: [ main ]
 
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hearo-be
+permissions:
+  contents: read
+  packages: write  
 
 jobs:
   build_and_push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Login to GHCR (push)
+      - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build & Push image
+      - name: Build & Push (org namespace, lowercase)
         run: |
           OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_REPO="ghcr.io/${OWNER_LC}/hearo-be"
@@ -30,7 +29,7 @@ jobs:
     needs: build_and_push
     runs-on: ubuntu-latest
     steps:
-      - name: SSH Deploy
+      - name: SSH Deploy 
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
