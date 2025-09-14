@@ -2,7 +2,7 @@ import time
 
 time.sleep(3)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from app.routers import auth_router, user_router,sound_event_router, push_notification_router, guardian_router, user_setting_router, guardian_user_setting_router,  map_router, battery_router, pose_ws_router, call_router, health
 from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from app.map_generator import generate_wall_and_meta
 from app.ws import ws_manager
 from fastapi import Response
+from app.utils import redirect_with_ts
 
 import os
 
@@ -58,10 +59,12 @@ FRONTEND_DIR = PROJ_DIR / "frontend" / "build"
 
 
 @app.get("/map-config.json")
-def get_map_config():
+def get_map_config(request: Request):
     p = PUBLIC_DIR / "map-config.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
+    r = redirect_with_ts(request, p)
+    if r: return r
     return Response(
         content=p.read_text(encoding="utf-8"),
         media_type="application/json",
@@ -73,10 +76,12 @@ def get_map_config():
     )
 
 @app.get("/wall_shell.json")
-def get_wall_shell():
+def get_wall_shell(request: Request):
     p = PUBLIC_DIR / "wall_shell.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
+    r = redirect_with_ts(request, p)
+    if r: return r
     return Response(
         content=p.read_text(encoding="utf-8"),
         media_type="application/json",
@@ -88,10 +93,12 @@ def get_wall_shell():
     )
 
 @app.get("/meta.json")
-def get_meta():
+def get_meta(request: Request):
     p = PUBLIC_DIR / "meta.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
+    r = redirect_with_ts(request, p)
+    if r: return r
     return Response(
         content=p.read_text(encoding="utf-8"),
         media_type="application/json",
@@ -103,10 +110,12 @@ def get_meta():
     )
 
 @app.get("/obstacles.json")
-def get_obstacles():
+def get_obstacles(request: Request):
     p = PUBLIC_DIR / "obstacles.json"
     if not p.exists():
         raise HTTPException(404, detail=f"{p} not found")
+    r = redirect_with_ts(request, p)
+    if r: return r
     return Response(
         content=p.read_text(encoding="utf-8"),
         media_type="application/json",
