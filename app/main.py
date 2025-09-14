@@ -175,7 +175,7 @@ def _root_redirect(request: Request):
 app.mount("/maps", StaticFiles(directory=str(PUBLIC_DIR / "maps"), html=False), name="maps")
 
 if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True, max_age=0), name="frontend")
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 else:
     @app.get("/")
     def _root():
