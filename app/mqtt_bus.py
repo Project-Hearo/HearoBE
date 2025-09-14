@@ -1,5 +1,5 @@
 import json, os, uuid, threading, queue
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional
 import paho.mqtt.client as mqtt
 import asyncio
 
@@ -10,23 +10,63 @@ MQTT_PASS = os.getenv("MQTT_PASS", "")
 
 DEFAULT_ROBOT_ID = os.getenv("ROBOT_ID", "robot001")
 
+
 def app_cmd_topic(robot_id: str, sub: str) -> str:
     return f"app/{robot_id}/cmd/{sub}"
+
 
 def _new_req_id() -> str:
     return f"REQ-{uuid.uuid4().hex}"
 
+
 def app_resp_topic(robot_id: str, sub: str) -> str:
     return f"app/{robot_id}/resp/{sub}"
 
+
+# ---------- 보조: 좌표 페이로드 정규화 ----------
+def _normalize_location_payload(raw: dict):
+    """
+    허용 형태:
+      {"x":1.0, "y":2.0, "theta":0.1}
+      {"pos":{"x":1.0,"y":2.0}, "yaw":0.1}
+      {"position":[1.0,2.0,0.1]}
+    """
+    x = y = theta = None
+    if isinstance(raw.get("x"), (int, float)) and isinstance(raw.get("y"), (int, float)):
+        x, y = float(raw["x"]), float(raw["y"])
+        if isinstance(raw.get("theta"), (int, float)):
+            theta = float(raw["theta"])
+    elif isinstance(raw.get("pos"), dict):
+        p = raw["pos"]
+        if isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float)):
+            x, y = float(p["x"]), float(p["y"])
+        if isinstance(raw.get("yaw"), (int, float)):
+            theta = float(raw["yaw"])
+    elif isinstance(raw.get("position"), (list, tuple)) and len(raw["position"]) >= 2:
+        x, y = float(raw["position"][0]), float(raw["position"][1])
+        if len(raw["position"]) >= 3 and isinstance(raw["position"][2], (int, float)):
+            theta = float(raw["position"][2])
+
+    if x is None or y is None:
+        return None
+    return {"x": x, "y": y, **({"theta": theta} if theta is not None else {})}
+
+
 class MqttBus:
     """
-    - 시작 구독: robot/+/telemetry/location  (SLAM 중)
-    - 업로드 완료 시: switch_to_map_location(robot_id?) → robot/{robot_id}/telemetry/map/location
-    - 공통: app/+/resp/#, app/+/status/online 구독 유지
+    - 항상 구독:
+        app/+/resp/#, app/+/status/online
+        robot/+/telemetry/location
+        robot/+/telemetry/map/location
+        app/+/pose (선택적 포즈 채널 유지)
     - publish_cmd(): app/{robot_id}/cmd/{sub} 로 QoS1, retain False 발행
-    - req_id -> Queue 라우팅, last_msg 폴링 제공
+    - req_id -> Queue 로 스트리밍 라우팅, last_msg로 폴링도 지원
+    - 좌표 수신 시:
+        - SLAM 좌표계  -> payload["frame"] = "slam"
+        - MAP  좌표계  -> payload["frame"] = "map"
+      → pose_sink가 있으면 await 호출, 없으면 ws_manager.broadcast_json(payload)
     """
+
     def __init__(self):
         self.client = mqtt.Client(client_id=f"app-server-{uuid.uuid4().hex[:8]}")
         if MQTT_USER:
@@ -37,85 +77,39 @@ class MqttBus:
         self.streams: Dict[str, "queue.Queue[dict]"] = {}
         self.last_msg: Dict[str, dict] = {}
         self.lock = threading.Lock()
-        self.pose_sink = None
-
-        # ▼ 현재 "위치 스트림" 토픽/콜백 (초기값: SLAM location)
-        self._pose_topic_filter: str = "robot/+/telemetry/location"
-        self._pose_callback:    Callable = self._on_location_message
+        self.pose_sink = None  # async def sink(data: dict)
 
     def set_pose_sink(self, coro_fn):
         """coro_fn(data: dict) -> awaitable"""
         self.pose_sink = coro_fn
 
-    # ---------- 시작/연결 ----------
-
+    # ---------- MQTT 시작 ----------
     def start(self):
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         threading.Thread(target=self.client.loop_forever, daemon=True).start()
 
+    # ---------- on_connect: 동시 구독 ----------
     def _on_connect(self, client, userdata, flags, rc):
-        # 공통 응답/상태 구독
+        # 공통 응답/상태
         client.subscribe("app/+/resp/#", qos=1)
         client.subscribe("app/+/status/online", qos=1)
 
-        # 현재 설정된 위치 스트림 토픽만 구독
-        client.subscribe(self._pose_topic_filter, qos=1)
-        client.message_callback_add(self._pose_topic_filter, self._pose_callback)
+        # 선택: 앱 포즈 채널 (유지)
+        client.subscribe("app/+/pose", qos=1)
+        client.message_callback_add("app/+/pose", self._on_pose_message)
 
-    # ---------- 동적 전환 API ----------
+        # 위치 토픽 2종을 "항상" 구독
+        client.subscribe("robot/+/telemetry/location", qos=1)
+        client.message_callback_add("robot/+/telemetry/location", self._on_location_message)
 
-    def switch_location_topic(self, topic_filter: str, callback: Optional[Callable] = None):
-        """현재 위치 토픽을 동적으로 전환(언/구독 + 콜백 재바인딩)."""
-        with self.lock:
-            old_filter = self._pose_topic_filter
-            old_cb     = self._pose_callback
-            new_filter = topic_filter
-            new_cb     = callback or self._on_location_message
+        client.subscribe("robot/+/telemetry/map/location", qos=1)
+        client.message_callback_add("robot/+/telemetry/map/location", self._on_map_location_message)
 
-            # 내부 상태 먼저 교체(재연결 시에도 새 설정 반영)
-            self._pose_topic_filter = new_filter
-            self._pose_callback     = new_cb
+        print("[mqtt_bus] connected & subscribed to pose/location/map/location")
 
-        # 이전 콜백 제거 + 언구독
-        try:
-            self.client.message_callback_remove(old_filter)
-        except Exception:
-            pass
-        try:
-            self.client.unsubscribe(old_filter)
-        except Exception:
-            pass
-
-        # 새 토픽 구독 + 콜백 바인딩
-        self.client.subscribe(new_filter, qos=1)
-        self.client.message_callback_add(new_filter, new_cb)
-
-        print(f"[mqtt_bus] location topic switched: {old_filter}  -->  {new_filter}")
-
-    def switch_to_location(self, robot_id: Optional[str] = None):
-        """
-        SLAM 단계(기본 위치)로 복귀.
-        robot_id 지정 시: robot/{robot_id}/telemetry/location
-        미지정 시:       robot/+/telemetry/location
-        """
-        tf = f"robot/{robot_id}/telemetry/location" if robot_id else "robot/+/telemetry/location"
-        self.switch_location_topic(tf, callback=self._on_location_message)
-
-    def switch_to_map_location(self, robot_id: Optional[str] = None):
-        """
-        맵 모드(지도 좌표계)로 전환.
-        robot_id 지정 시: robot/{robot_id}/telemetry/map/location
-        미지정 시:       robot/+/telemetry/map/location
-        """
-        tf = f"robot/{robot_id}/telemetry/map/location" if robot_id \
-             else "robot/+/telemetry/map/location"
-        self.switch_location_topic(tf, callback=self._on_map_location_message)
-
-    # ---------- 메시지/라우팅 ----------
-
+    # ---------- 공통 resp 라우팅 (req_id 기반) ----------
     def _on_message(self, client, userdata, msg):
-        # 공통 resp 라우팅 (req_id 기반)
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
         except Exception:
@@ -129,41 +123,27 @@ class MqttBus:
         if q:
             q.put(payload)
 
-    # /telemetry/map/location 콜백 (지도 좌표계)
-    def _on_map_location_message(self, client, userdata, msg):
+    # ---------- 선택: 앱 포즈 채널 ----------
+    def _on_pose_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
-
-            # 토픽에서 robot_id 우선 추출
-            parts = [p for p in msg.topic.split('/') if p]
-            robot_id = None
-            if len(parts) >= 5 and parts[0] == "robot":
-                # robot/{id}/telemetry/map/location
-                robot_id = parts[1]
-            if not robot_id:
-                robot_id = data.get("robot_id") or DEFAULT_ROBOT_ID
-
-            # 다양한 형태를 허용
+            parts = [p for p in msg.topic.split("/") if p]
+            robot_id = parts[1] if len(parts) >= 3 else DEFAULT_ROBOT_ID
+            # 최소 x,y 필수
             norm = _normalize_location_payload(data)
-            if not norm and all(k in data for k in ("x","y")):
-                norm = {"x": float(data["x"]), "y": float(data["y"])}
-                if isinstance(data.get("theta"), (int, float)):
-                    norm["theta"] = float(data["theta"])
             if not norm:
-                print(f"[mqtt_bus:map_location] bad payload: {data}")
+                print(f"[mqtt_bus:pose] bad payload(no x/y): {data}")
                 return
-
-            payload = {"robot_id": robot_id, **norm}
-
+            payload = {"robot_id": robot_id, **norm, "frame": "slam"}  # 앱 포즈는 보통 SLAM frame 가정
             if self.pose_sink:
                 asyncio.run(self.pose_sink(payload))
             else:
                 from app.ws import ws_manager
                 asyncio.run(ws_manager.broadcast_json(payload))
         except Exception as e:
-            print(f"[mqtt_bus:map_location] error: {e}, raw={msg.payload!r}")
+            print(f"[mqtt_bus:pose] error: {e}, raw={msg.payload!r}")
 
-    # SLAM location 콜백 (기존)
+    # ---------- SLAM 좌표계 ----------
     def _on_location_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
@@ -171,7 +151,6 @@ class MqttBus:
             print(f"[mqtt_bus:location] bad json: {e}, raw={msg.payload!r}")
             return
 
-        # robot/{robot_id}/telemetry/location
         parts = [p for p in msg.topic.split('/') if p]
         robot_id = parts[1] if len(parts) >= 4 and parts[0] == "robot" else DEFAULT_ROBOT_ID
 
@@ -180,7 +159,7 @@ class MqttBus:
             print(f"[mqtt_bus:location] missing x/y in payload: {data}")
             return
 
-        payload = {"robot_id": robot_id, **norm}  # {robot_id,x,y,theta?}
+        payload = {"robot_id": robot_id, **norm, "frame": "slam"}  # {robot_id,x,y,theta?,frame}
 
         if self.pose_sink:
             try:
@@ -195,8 +174,42 @@ class MqttBus:
         except Exception as e:
             print("[mqtt_bus:location] ws broadcast error:", e)
 
-    # ---------- 스트림/요청 유틸 ----------
+    # ---------- MAP 좌표계 ----------
+    def _on_map_location_message(self, client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode("utf-8"))
 
+            # 토픽에서 robot_id 추출 우선
+            parts = [p for p in msg.topic.split('/') if p]
+            robot_id = None
+            if len(parts) >= 5 and parts[0] == "robot":
+                # robot/{id}/telemetry/map/location
+                robot_id = parts[1]
+            if not robot_id:
+                robot_id = data.get("robot_id") or DEFAULT_ROBOT_ID
+
+            norm = _normalize_location_payload(data)
+            if not norm and all(k in data for k in ("x", "y")):
+                # 혹시 정규화 못했는데 x,y는 있는 케이스
+                norm = {"x": float(data["x"]), "y": float(data["y"])}
+                if isinstance(data.get("theta"), (int, float)):
+                    norm["theta"] = float(data["theta"])
+
+            if not norm:
+                print(f"[mqtt_bus:map_location] bad payload(no x/y): {data}")
+                return
+
+            payload = {"robot_id": robot_id, **norm, "frame": "map"}
+
+            if self.pose_sink:
+                asyncio.run(self.pose_sink(payload))
+            else:
+                from app.ws import ws_manager
+                asyncio.run(ws_manager.broadcast_json(payload))
+        except Exception as e:
+            print(f"[mqtt_bus:map_location] error: {e}, raw={msg.payload!r}")
+
+    # ---------- 스트림/요청 유틸 ----------
     def create_stream(self, req_id: str):
         q: "queue.Queue[dict]" = queue.Queue()
         with self.lock:
@@ -211,6 +224,7 @@ class MqttBus:
         with self.lock:
             return self.last_msg.get(req_id)
 
+    # ---------- 명령 발행 ----------
     def publish_cmd(self, robot_id: Optional[str], subtopic: str, request_dict: dict) -> str:
         rid = robot_id or DEFAULT_ROBOT_ID
 
@@ -230,27 +244,7 @@ class MqttBus:
             json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             qos=1, retain=False
         )
+        return req_id
 
-        return req_id  # 필요하면 topic도 함께 리턴하도록 바꿔도 OK
-
-# ---------- 보조 ----------
-
-def _normalize_location_payload(raw: dict):
-    x = y = theta = None
-    if isinstance(raw.get("x"), (int, float)) and isinstance(raw.get("y"), (int, float)):
-        x, y = float(raw["x"]), float(raw["y"])
-        if isinstance(raw.get("theta"), (int, float)): theta = float(raw["theta"])
-    elif isinstance(raw.get("pos"), dict):
-        p = raw["pos"]
-        if isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float)):
-            x, y = float(p["x"]), float(p["y"])
-        if isinstance(raw.get("yaw"), (int, float)): theta = float(raw["yaw"])
-    elif isinstance(raw.get("position"), (list, tuple)) and len(raw["position"]) >= 2:
-        x, y = float(raw["position"][0]), float(raw["position"][1])
-        if len(raw["position"]) >= 3 and isinstance(raw["position"][2], (int, float)):
-            theta = float(raw["position"][2])
-    if x is None or y is None:
-        return None
-    return {"x": x, "y": y, **({"theta": theta} if theta is not None else {})}
 
 mqtt_bus = MqttBus()
