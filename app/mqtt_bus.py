@@ -147,6 +147,7 @@ class MqttBus:
     def _on_location_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
+            print("[mqtt_bus:location] got:", data)
         except Exception as e:
             print(f"[mqtt_bus:location] bad json: {e}, raw={msg.payload!r}")
             return
@@ -178,6 +179,7 @@ class MqttBus:
     def _on_map_location_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
+            print("[mqtt_bus:map_location] got:", data)
 
             # 토픽에서 robot_id 추출 우선
             parts = [p for p in msg.topic.split('/') if p]
