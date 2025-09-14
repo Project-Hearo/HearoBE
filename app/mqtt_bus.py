@@ -1,5 +1,5 @@
 import json, os, uuid, threading, queue
-from typing import Dict, Optional
+from typing import Dict, Optional, Callable
 import paho.mqtt.client as mqtt
 import asyncio
 
@@ -21,9 +21,11 @@ def app_resp_topic(robot_id: str, sub: str) -> str:
 
 class MqttBus:
     """
-    - 구독: app/+/resp/#, app/+/status/online
+    - 시작 구독: robot/+/telemetry/location  (SLAM 중)
+    - 업로드 완료 시: switch_to_map_location(robot_id?) → robot/{robot_id}/telemetry/map/location
+    - 공통: app/+/resp/#, app/+/status/online 구독 유지
     - publish_cmd(): app/{robot_id}/cmd/{sub} 로 QoS1, retain False 발행
-    - req_id -> Queue 로 스트리밍 라우팅, last_msg로 폴링도 지원
+    - req_id -> Queue 라우팅, last_msg 폴링 제공
     """
     def __init__(self):
         self.client = mqtt.Client(client_id=f"app-server-{uuid.uuid4().hex[:8]}")
@@ -37,58 +39,83 @@ class MqttBus:
         self.lock = threading.Lock()
         self.pose_sink = None
 
+        # ▼ 현재 "위치 스트림" 토픽/콜백 (초기값: SLAM location)
+        self._pose_topic_filter: str = "robot/+/telemetry/location"
+        self._pose_callback:    Callable = self._on_location_message
+
     def set_pose_sink(self, coro_fn):
         """coro_fn(data: dict) -> awaitable"""
         self.pose_sink = coro_fn
 
-    # pose 전용 콜백 (req_id 필요 없음)
-    def _on_pose_message(self, client, userdata, msg):
-        try:
-            data = json.loads(msg.payload.decode("utf-8"))
-            parts = msg.topic.split("/")
-            robot_id = parts[1] if len(parts) >= 3 else "robot"
-
-            x = float(data["x"])
-            y = float(data["y"])
-            theta = data.get("theta")  # optional
-
-
-            payload = {
-                "robot_id": robot_id,
-                "x": x, "y": y,
-                "theta": theta,  #라디안
-            }
-
-            if self.pose_sink:
-                asyncio.run(self.pose_sink(payload))
-            else:
-                # 훅 미주입 시 직접 WS로
-                from app.ws import ws_manager
-                asyncio.run(ws_manager.broadcast_json(payload))
-
-        except Exception as e:
-            print(f"[mqtt_bus:pose] bad payload: {e}, raw={msg.payload!r}")
+    # ---------- 시작/연결 ----------
 
     def start(self):
-
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         self.client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         threading.Thread(target=self.client.loop_forever, daemon=True).start()
 
     def _on_connect(self, client, userdata, flags, rc):
+        # 공통 응답/상태 구독
         client.subscribe("app/+/resp/#", qos=1)
         client.subscribe("app/+/status/online", qos=1)
 
-        client.subscribe("app/+/pose", qos=1)
-        client.message_callback_add("app/+/pose", self._on_pose_message)
+        # 현재 설정된 위치 스트림 토픽만 구독
+        client.subscribe(self._pose_topic_filter, qos=1)
+        client.message_callback_add(self._pose_topic_filter, self._pose_callback)
 
-        client.subscribe("robot/+/telemetry/location", qos=1)
-        client.message_callback_add("robot/+/telemetry/location", self._on_location_message)
+    # ---------- 동적 전환 API ----------
 
-        #client.subscribe("app/+/event/sound", qos=1)
-        #client.message_callback_add("app/+/event/sound", self._on_sound_message)
+    def switch_location_topic(self, topic_filter: str, callback: Optional[Callable] = None):
+        """현재 위치 토픽을 동적으로 전환(언/구독 + 콜백 재바인딩)."""
+        with self.lock:
+            old_filter = self._pose_topic_filter
+            old_cb     = self._pose_callback
+            new_filter = topic_filter
+            new_cb     = callback or self._on_location_message
+
+            # 내부 상태 먼저 교체(재연결 시에도 새 설정 반영)
+            self._pose_topic_filter = new_filter
+            self._pose_callback     = new_cb
+
+        # 이전 콜백 제거 + 언구독
+        try:
+            self.client.message_callback_remove(old_filter)
+        except Exception:
+            pass
+        try:
+            self.client.unsubscribe(old_filter)
+        except Exception:
+            pass
+
+        # 새 토픽 구독 + 콜백 바인딩
+        self.client.subscribe(new_filter, qos=1)
+        self.client.message_callback_add(new_filter, new_cb)
+
+        print(f"[mqtt_bus] location topic switched: {old_filter}  -->  {new_filter}")
+
+    def switch_to_location(self, robot_id: Optional[str] = None):
+        """
+        SLAM 단계(기본 위치)로 복귀.
+        robot_id 지정 시: robot/{robot_id}/telemetry/location
+        미지정 시:       robot/+/telemetry/location
+        """
+        tf = f"robot/{robot_id}/telemetry/location" if robot_id else "robot/+/telemetry/location"
+        self.switch_location_topic(tf, callback=self._on_location_message)
+
+    def switch_to_map_location(self, robot_id: Optional[str] = None):
+        """
+        맵 모드(지도 좌표계)로 전환.
+        robot_id 지정 시: robot/{robot_id}/telemetry/map/location
+        미지정 시:       robot/+/telemetry/map/location
+        """
+        tf = f"robot/{robot_id}/telemetry/map/location" if robot_id \
+             else "robot/+/telemetry/map/location"
+        self.switch_location_topic(tf, callback=self._on_map_location_message)
+
+    # ---------- 메시지/라우팅 ----------
 
     def _on_message(self, client, userdata, msg):
+        # 공통 resp 라우팅 (req_id 기반)
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
         except Exception:
@@ -102,6 +129,41 @@ class MqttBus:
         if q:
             q.put(payload)
 
+    # /telemetry/map/location 콜백 (지도 좌표계)
+    def _on_map_location_message(self, client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode("utf-8"))
+
+            # 토픽에서 robot_id 우선 추출
+            parts = [p for p in msg.topic.split('/') if p]
+            robot_id = None
+            if len(parts) >= 5 and parts[0] == "robot":
+                # robot/{id}/telemetry/map/location
+                robot_id = parts[1]
+            if not robot_id:
+                robot_id = data.get("robot_id") or DEFAULT_ROBOT_ID
+
+            # 다양한 형태를 허용
+            norm = _normalize_location_payload(data)
+            if not norm and all(k in data for k in ("x","y")):
+                norm = {"x": float(data["x"]), "y": float(data["y"])}
+                if isinstance(data.get("theta"), (int, float)):
+                    norm["theta"] = float(data["theta"])
+            if not norm:
+                print(f"[mqtt_bus:map_location] bad payload: {data}")
+                return
+
+            payload = {"robot_id": robot_id, **norm}
+
+            if self.pose_sink:
+                asyncio.run(self.pose_sink(payload))
+            else:
+                from app.ws import ws_manager
+                asyncio.run(ws_manager.broadcast_json(payload))
+        except Exception as e:
+            print(f"[mqtt_bus:map_location] error: {e}, raw={msg.payload!r}")
+
+    # SLAM location 콜백 (기존)
     def _on_location_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
@@ -110,8 +172,8 @@ class MqttBus:
             return
 
         # robot/{robot_id}/telemetry/location
-        parts = msg.topic.split("/")
-        robot_id = parts[1] if len(parts) >= 4 else "robot"
+        parts = [p for p in msg.topic.split('/') if p]
+        robot_id = parts[1] if len(parts) >= 4 and parts[0] == "robot" else DEFAULT_ROBOT_ID
 
         norm = _normalize_location_payload(data)
         if not norm:
@@ -132,6 +194,8 @@ class MqttBus:
             asyncio.run(ws_manager.broadcast_json(payload))
         except Exception as e:
             print("[mqtt_bus:location] ws broadcast error:", e)
+
+    # ---------- 스트림/요청 유틸 ----------
 
     def create_stream(self, req_id: str):
         q: "queue.Queue[dict]" = queue.Queue()
@@ -161,7 +225,7 @@ class MqttBus:
         }
 
         topic = app_cmd_topic(rid, subtopic)
-        info = self.client.publish(
+        self.client.publish(
             topic,
             json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             qos=1, retain=False
@@ -169,6 +233,7 @@ class MqttBus:
 
         return req_id  # 필요하면 topic도 함께 리턴하도록 바꿔도 OK
 
+# ---------- 보조 ----------
 
 def _normalize_location_payload(raw: dict):
     x = y = theta = None
