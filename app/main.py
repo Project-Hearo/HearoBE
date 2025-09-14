@@ -4,9 +4,10 @@ time.sleep(3)
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from dotenv import load_dotenv
 from pathlib import Path
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 
 from app.database import engine, Base
 from app.ws import ws_manager
@@ -29,10 +30,7 @@ from app.routers import (
     slam,
 )
 
-
 from app.utils import redirect_with_ts
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
-
 
 load_dotenv()
 
@@ -70,10 +68,10 @@ PROJ_DIR = APP_DIR.parent
 PUBLIC_DIR = PROJ_DIR / "public"
 FRONTEND_DIR = PROJ_DIR / "frontend" / "build"
 
-
+# ---------- 공통 헤더(무캐시 + ETag) ----------
 def _nocache_headers(p: Path) -> dict:
     st = p.stat()
-    etag = f'W/"{st.st_mtime_ns}-{st.st_size}"'
+    etag = f'W/"{st.st_mtime_ns}-{st.st_size}"'  # 약한 ETag
     return {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, no-transform",
         "Pragma": "no-cache",
@@ -83,7 +81,7 @@ def _nocache_headers(p: Path) -> dict:
         'Clear-Site-Data': '"cache"',
     }
 
-
+# ---------- JSON 라우트들(리다이렉트 + 무캐시 + ETag) ----------
 @app.get("/map-config.json")
 def get_map_config(request: Request):
     p = PUBLIC_DIR / "map-config.json"
@@ -140,10 +138,9 @@ def get_obstacles(request: Request):
         headers=_nocache_headers(p),
     )
 
-
+# ---------- 서비스워커 비활성화(캐시 가로채기 방지) ----------
 @app.get("/service-worker.js")
 def kill_service_worker():
-
     return Response(
         "/* Service Worker disabled by server */",
         status_code=410,
@@ -151,36 +148,52 @@ def kill_service_worker():
         headers={"Cache-Control": "no-store"},
     )
 
-
+# ---------- / 진입 시에도 캐시버스트 + index.html 직접 서빙 ----------
 def _index_ts() -> int:
     idx = FRONTEND_DIR / "index.html"
     try:
         return int(idx.stat().st_mtime)
     except FileNotFoundError:
         return int(time.time())
+
 @app.get("/")
-def _root_redirect(request: Request):
+def _root_redirect_or_serve(request: Request):
+    # ts 없으면 → ts 붙여 리다이렉트(캐시버스트)
     q = dict(parse_qsl(request.url.query))
-    if "ts" in q:
-        from fastapi.responses import Response
-        return Response(status_code=204)
-    q["ts"] = str(_index_ts())
-    parsed = urlparse(str(request.url))
-    new_url = urlunparse(parsed._replace(query=urlencode(q)))
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(new_url, status_code=302)
+    if "ts" not in q:
+        q["ts"] = str(_index_ts())
+        parsed = urlparse(str(request.url))
+        new_url = urlunparse(parsed._replace(query=urlencode(q)))
+        return RedirectResponse(new_url, status_code=302)
 
+    # ts 있으면 → index.html 직접 서빙(200 OK)
+    idx = FRONTEND_DIR / "index.html"
+    if not idx.exists():
+        raise HTTPException(404, detail=f"{idx} not found")
+    return FileResponse(
+        path=str(idx),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, no-transform",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
+# ---------- 정적 파일 마운트 ----------
+# public/maps 가 없으면 자동 생성
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
 app.mount("/maps", StaticFiles(directory=str(PUBLIC_DIR / "maps"), html=False), name="maps")
 
+# 프런트 정적 자산(번들, assets 등)
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 else:
-    @app.get("/")
-    def _root():
+    @app.get("/_no_frontend")
+    def _no_frontend():
         return {"ok": True, "msg": f"frontend not found at {FRONTEND_DIR}"}
 
+# ---------- 스타트업 ----------
 @app.on_event("startup")
 def _startup():
     # MQTT 브로커 연결
