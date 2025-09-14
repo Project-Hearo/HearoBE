@@ -72,6 +72,7 @@ def get_map_config(request: Request):
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
             "Expires": "0",
+            "Clear-Site-Data": '"cache"',
         },
     )
 
@@ -89,6 +90,7 @@ def get_wall_shell(request: Request):
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
             "Expires": "0",
+            "Clear-Site-Data": '"cache"',
         },
     )
 
@@ -106,6 +108,7 @@ def get_meta(request: Request):
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
             "Expires": "0",
+            "Clear-Site-Data": '"cache"',
         },
     )
 
@@ -123,6 +126,7 @@ def get_obstacles(request: Request):
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
             "Expires": "0",
+            "Clear-Site-Data": '"cache"',
         },
     )
 
