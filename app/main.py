@@ -102,6 +102,21 @@ def get_meta():
         },
     )
 
+@app.get("/obstacles.json")
+def get_obstacles():
+    p = PUBLIC_DIR / "obstacles.json"
+    if not p.exists():
+        raise HTTPException(404, detail=f"{p} not found")
+    return Response(
+        content=p.read_text(encoding="utf-8"),
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
 
 # public/maps 가 없으면 자동 생성
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
