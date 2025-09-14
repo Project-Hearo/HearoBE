@@ -31,6 +31,8 @@ from app.routers import (
 
 
 from app.utils import redirect_with_ts
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
+
 
 load_dotenv()
 
@@ -148,6 +150,25 @@ def kill_service_worker():
         media_type="application/javascript",
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _index_ts() -> int:
+    idx = FRONTEND_DIR / "index.html"
+    try:
+        return int(idx.stat().st_mtime)
+    except FileNotFoundError:
+        return int(time.time())
+@app.get("/")
+def _root_redirect(request: Request):
+    q = dict(parse_qsl(request.url.query))
+    if "ts" in q:
+        from fastapi.responses import Response
+        return Response(status_code=204)
+    q["ts"] = str(_index_ts())
+    parsed = urlparse(str(request.url))
+    new_url = urlunparse(parsed._replace(query=urlencode(q)))
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(new_url, status_code=302)
 
 
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
