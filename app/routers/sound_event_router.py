@@ -6,9 +6,11 @@ from app.database import get_db
 from app.fcm import send_fcm_v1
 
 from fastapi import Query
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
 
 router = APIRouter(prefix="/sound-events", tags=["Sound Events"])
+logger = logging.getLogger("hearo.sound")
 
 @router.post("/", response_model=schemas.SoundEventResponse)
 def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db)):
@@ -18,6 +20,23 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
+
+    server_received_at = datetime.now(timezone.utc)
+    occurred_at = getattr(db_event, "occurred_at", None)
+
+    logger.info(
+        "[SoundEvent/SAVED] event_id=%s user_id=%s type=%s detail=%s occurred_at=%s received_at=%s decibel=%s angle=%s loc=(%s,%s)",
+        getattr(db_event, "event_id", None),
+        db_event.user_id,
+        db_event.sound_type,
+        (db_event.sound_detail or "").strip(),
+        occurred_at.isoformat() if isinstance(occurred_at, datetime) else occurred_at,
+        server_received_at.isoformat(),
+        getattr(db_event, "decibel", None),
+        getattr(db_event, "angle", None),
+        getattr(db_event, "location_x", None),
+        getattr(db_event, "location_y", None),
+    )
 
     sound_type_map = {"danger": "위험", "help": "도움", "warning": "경고"}
     sound_type_ko = sound_type_map.get(event.sound_type, event.sound_type)
@@ -39,13 +58,18 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
     who = f"{user_name}님" if user_name else f"사용자(ID:{event.user_id})"
 
     if user and getattr(user, "device_token", None):
-        send_fcm_v1(
-            token=user.device_token,
-            title="새로운 소리 감지",
-            body=body_text,
-        )
+        try:
+            send_fcm_v1(
+                token=user.device_token,
+                title="새로운 소리 감지",
+                body=body_text,
+            )
+            logger.info("[FCM/USER] user_id=%s token=***%s title=%s body=%s",
+                        event.user_id, str(user.device_token)[-6:], "새로운 소리 감지", body_text)
+        except Exception as e:
+            logger.error("[FCM/USER][ERROR] user_id=%s err=%s", event.user_id, e)
     else:
-        print("user의 FCM 토큰이 없습니다. (사용자 푸시는 스킵)")
+        logger.info("[FCM/USER][SKIP] user_id=%s reason=no_token", event.user_id)
 
     guardian_ids = []
     guardians = []
@@ -78,20 +102,28 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         allow_map = {s.guardian_id: getattr(s, event.sound_type, True) for s in settings}
 
     seen = set()
+
     for g in guardians:
         token = getattr(g, "device_token", None)
         gid = getattr(g, "guardian_id", None)
         if not token or token in seen:
             continue
         if allow_map and gid is not None and allow_map.get(gid, True) is False:
+            logger.info("[FCM/GUARDIAN][SKIP] guardian_id=%s user_id=%s reason=setting_blocked", gid, event.user_id)
             continue
 
-        send_fcm_v1(
-            token=token,
-            title="보호자 알림",
-            body=f"{who}: {body_text}",
-        )
-        seen.add(token)
+        try:
+            send_fcm_v1(
+                token=token,
+                title="보호자 알림",
+                body=f"{who}: {body_text}",
+            )
+            logger.info("[FCM/GUARDIAN] guardian_id=%s user_id=%s token=***%s title=%s body=%s",
+                        gid, event.user_id, str(token)[-6:], "보호자 알림", f"{who}: {body_text}")
+            seen.add(token)
+        except Exception as e:
+            logger.error("[FCM/GUARDIAN][ERROR] guardian_id=%s user_id=%s err=%s", gid, event.user_id, e)
+
 
     return db_event
 

@@ -1,4 +1,5 @@
 import time
+import logging
 time.sleep(3)
 
 from fastapi import FastAPI, Request, Response, HTTPException
@@ -32,6 +33,11 @@ from app.routers import (
 )
 
 from app.utils import redirect_with_ts
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 
 load_dotenv()
 
