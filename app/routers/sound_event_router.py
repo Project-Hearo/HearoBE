@@ -58,18 +58,18 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
     who = f"{user_name}님" if user_name else f"사용자(ID:{event.user_id})"
 
     if user and getattr(user, "device_token", None):
-        try:
-            send_fcm_v1(
-                token=user.device_token,
-                title="새로운 소리 감지",
-                body=body_text,
-            )
-            logger.info("[FCM/USER] user_id=%s token=***%s title=%s body=%s",
-                        event.user_id, str(user.device_token)[-6:], "새로운 소리 감지", body_text)
-        except Exception as e:
-            logger.error("[FCM/USER][ERROR] user_id=%s err=%s", event.user_id, e)
+        send_fcm_v1(
+            token=user.device_token,
+            title="새로운 소리 감지",
+            body=body_text,
+        )
+
+
+
+
+
     else:
-        logger.info("[FCM/USER][SKIP] user_id=%s reason=no_token", event.user_id)
+        print("user의 FCM 토큰이 없습니다. (사용자 푸시는 스킵)")
 
     guardian_ids = []
     guardians = []
@@ -109,33 +109,28 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
         if not token or token in seen:
             continue
         if allow_map and gid is not None and allow_map.get(gid, True) is False:
-            logger.info("[FCM/GUARDIAN][SKIP] guardian_id=%s user_id=%s reason=setting_blocked", gid, event.user_id)
             continue
 
-        try:
-            send_fcm_v1(
-                token=token,
-                title="보호자 알림",
-                body=f"{who}: {body_text}",
-            )
-            logger.info("[FCM/GUARDIAN] guardian_id=%s user_id=%s token=***%s title=%s body=%s",
-                        gid, event.user_id, str(token)[-6:], "보호자 알림", f"{who}: {body_text}")
-            seen.add(token)
-        except Exception as e:
-            logger.error("[FCM/GUARDIAN][ERROR] guardian_id=%s user_id=%s err=%s", gid, event.user_id, e)
-
+        send_fcm_v1(
+            token=token,
+            title="보호자 알림",
+            body=f"{who}: {body_text}",
+        )
+        seen.add(token)
 
     return db_event
 
+
 @router.get("/", response_model=List[schemas.SoundEventResponse])
 def read_events(db: Session = Depends(get_db)):
     return db.query(models.SoundEvent).all()
 
+
 @router.get("/user/{user_id}", response_model=List[schemas.SoundEventResponse])
 def read_user_events_by_date(
-    user_id: int,
-    date: str = Query(..., description="YYYY-MM-DD 형식"),
-    db: Session = Depends(get_db)
+        user_id: int,
+        date: str = Query(..., description="YYYY-MM-DD 형식"),
+        db: Session = Depends(get_db)
 ):
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -154,16 +149,16 @@ def read_user_events_by_date(
     return events
 
 
-
 @router.get("/", response_model=List[schemas.SoundEventResponse])
 def read_events(db: Session = Depends(get_db)):
     return db.query(models.SoundEvent).all()
 
+
 @router.get("/user/{user_id}", response_model=List[schemas.SoundEventResponse])
 def read_user_events_by_date(
-    user_id: int,
-    date: str = Query(..., description="YYYY-MM-DD 형식"),
-    db: Session = Depends(get_db)
+        user_id: int,
+        date: str = Query(..., description="YYYY-MM-DD 형식"),
+        db: Session = Depends(get_db)
 ):
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -180,6 +175,7 @@ def read_user_events_by_date(
     ).all()
 
     return events
+
 
 @router.get("/user/{user_id}/events", response_model=List[schemas.SoundEventResponse])
 def read_user_all_events(user_id: int, db: Session = Depends(get_db)):
