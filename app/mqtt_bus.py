@@ -134,23 +134,28 @@ class MqttBus:
     def _on_pose_message(self, client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode("utf-8"))
-            parts = [p for p in msg.topic.split("/") if p]
-            robot_id = parts[1] if len(parts) >= 3 else DEFAULT_ROBOT_ID
-            # 최소 x,y 필수
-            norm = _normalize_location_payload(data)
-            if not norm:
-                print(f"[mqtt_bus:pose] bad payload(no x/y): {data}")
-                return
-            payload = {"robot_id": robot_id, **norm, "frame": "slam"}  # 앱 포즈는 보통 SLAM frame 가정
-            self.last_pose["slam"] = payload
+            parts = msg.topic.split("/")
+            robot_id = parts[1] if len(parts) >= 3 else "robot"
+
+            x = float(data["x"])
+            y = float(data["y"])
+            theta = data.get("theta")  # optional
+
+            payload = {
+                "robot_id": robot_id,
+                "x": x, "y": y,
+                "theta": theta,  # 라디안
+            }
+
             if self.pose_sink:
                 asyncio.run(self.pose_sink(payload))
             else:
+                # 훅 미주입 시 직접 WS로
                 from app.ws import ws_manager
                 asyncio.run(ws_manager.broadcast_json(payload))
-        except Exception as e:
-            print(f"[mqtt_bus:pose] error: {e}, raw={msg.payload!r}")
 
+        except Exception as e:
+            print(f"[mqtt_bus:pose] bad payload: {e}, raw={msg.payload!r}")
     # ---------- SLAM 좌표계 ----------
     def _on_location_message(self, client, userdata, msg):
         try:
