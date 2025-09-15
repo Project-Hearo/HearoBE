@@ -28,6 +28,7 @@ from app.routers import (
     call_router,
     health,
     slam,
+    debug_pose,
 )
 
 from app.utils import redirect_with_ts
@@ -61,6 +62,7 @@ app.include_router(call_router.router)
 app.include_router(slam.router)
 app.include_router(battery_router.router)
 app.include_router(pose_ws_router.router)
+app.include_router(debug_pose.router)
 
 # 경로 설정
 APP_DIR = Path(__file__).resolve().parent

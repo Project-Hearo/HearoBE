@@ -78,7 +78,14 @@ class MqttBus:
         self.last_msg: Dict[str, dict] = {}
         self.lock = threading.Lock()
         self.pose_sink = None  # async def sink(data: dict)
+        self.last_pose = {"slam": None, "map": None}
 
+    # 호환용 no-op
+    def switch_to_location(self, robot_id: Optional[str] = None):
+        print(f"[mqtt_bus] switch_to_location({robot_id}) ignored (dual-subscribe mode)")
+
+    def switch_to_map_location(self, robot_id: Optional[str] = None):
+        print(f"[mqtt_bus] switch_to_map_location({robot_id}) ignored (dual-subscribe mode)")
     def set_pose_sink(self, coro_fn):
         """coro_fn(data: dict) -> awaitable"""
         self.pose_sink = coro_fn
@@ -135,6 +142,7 @@ class MqttBus:
                 print(f"[mqtt_bus:pose] bad payload(no x/y): {data}")
                 return
             payload = {"robot_id": robot_id, **norm, "frame": "slam"}  # 앱 포즈는 보통 SLAM frame 가정
+            self.last_pose["slam"] = payload
             if self.pose_sink:
                 asyncio.run(self.pose_sink(payload))
             else:
@@ -161,7 +169,7 @@ class MqttBus:
             return
 
         payload = {"robot_id": robot_id, **norm, "frame": "slam"}  # {robot_id,x,y,theta?,frame}
-
+        self.last_pose["map"] = payload
         if self.pose_sink:
             try:
                 asyncio.run(self.pose_sink(payload))
