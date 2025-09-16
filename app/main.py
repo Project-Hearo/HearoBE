@@ -34,14 +34,17 @@ from app.routers import (
 
 from app.utils import redirect_with_ts
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+
 
 load_dotenv()
 
 app = FastAPI()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z"  # ISO 비슷한 형태
+)
 app.include_router(health.router)
 
 app.add_middleware(
@@ -79,7 +82,7 @@ FRONTEND_DIR = PROJ_DIR / "frontend" / "build"
 # ---------- 공통 헤더(무캐시 + ETag) ----------
 def _nocache_headers(p: Path) -> dict:
     st = p.stat()
-    etag = f'W/"{st.st_mtime_ns}-{st.st_size}"'  # 약한 ETag
+    etag = f'W/"{st.st_mtime_ns}-{st.st_size}"'
     return {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, no-transform",
         "Pragma": "no-cache",
