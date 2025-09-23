@@ -1,4 +1,3 @@
-# app/routers/map_router.py (또는 네 파일명)
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
@@ -44,15 +43,12 @@ async def ws_endpoint(ws: WebSocket):
             except Exception:
                 continue
 
-            # 1) 포즈: {x, y} → 모두에게 브로드캐스트
             if isinstance(obj, dict) and \
                isinstance(obj.get("x"), (int, float)) and \
                isinstance(obj.get("y"), (int, float)):
                 await broadcast_json({"x": float(obj["x"]), "y": float(obj["y"])}, exclude=ws)
                 continue
 
-            # 2) 핑/유지용 메시지면 무시 가능
-            # if obj.get("type") == "ping": await ws.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
         pass
     finally:
@@ -83,7 +79,6 @@ async def upload_map(yaml: UploadFile = File(...), pgm: UploadFile = File(...)):
     with open(pgm_path, "wb") as f:
         shutil.copyfileobj(pgm.file, f)
 
-    # map-config.json 업데이트 (생성기가 이걸 읽음)
     cfg = {
         "active": "latest",
         "profiles": {
@@ -94,13 +89,11 @@ async def upload_map(yaml: UploadFile = File(...), pgm: UploadFile = File(...)):
     }
     CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 변환 실행
     try:
         generate_wall_and_meta()
     except Exception as e:
         return JSONResponse({"error": f"map generation failed: {e}"}, status_code=500)
 
-    # 맵 갱신 알림
     await broadcast_json({"event": "map_updated"})
 
     return {"ok": True, "yaml": str(yaml_path), "pgm": str(pgm_path)}

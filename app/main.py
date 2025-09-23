@@ -43,7 +43,7 @@ app = FastAPI()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S%z"  # ISO 비슷한 형태
+    datefmt="%Y-%m-%dT%H:%M:%S%z"
 )
 app.include_router(health.router)
 
@@ -79,7 +79,6 @@ PROJ_DIR = APP_DIR.parent
 PUBLIC_DIR = PROJ_DIR / "public"
 FRONTEND_DIR = PROJ_DIR / "frontend" / "build"
 
-# ---------- 공통 헤더(무캐시 + ETag) ----------
 def _nocache_headers(p: Path) -> dict:
     st = p.stat()
     etag = f'W/"{st.st_mtime_ns}-{st.st_size}"'
@@ -92,7 +91,6 @@ def _nocache_headers(p: Path) -> dict:
         'Clear-Site-Data': '"cache"',
     }
 
-# ---------- JSON 라우트들(리다이렉트 + 무캐시 + ETag) ----------
 @app.get("/map-config.json")
 def get_map_config(request: Request):
     p = PUBLIC_DIR / "map-config.json"
@@ -149,7 +147,6 @@ def get_obstacles(request: Request):
         headers=_nocache_headers(p),
     )
 
-# ---------- 서비스워커 비활성화(캐시 가로채기 방지) ----------
 @app.get("/service-worker.js")
 def kill_service_worker():
     return Response(
@@ -159,7 +156,6 @@ def kill_service_worker():
         headers={"Cache-Control": "no-store"},
     )
 
-# ---------- / 진입 시에도 캐시버스트 + index.html 직접 서빙 ----------
 def _index_ts() -> int:
     idx = FRONTEND_DIR / "index.html"
     try:
@@ -169,7 +165,6 @@ def _index_ts() -> int:
 
 @app.get("/")
 def _root_redirect_or_serve(request: Request):
-    # ts 없으면 → ts 붙여 리다이렉트(캐시버스트)
     q = dict(parse_qsl(request.url.query))
     if "ts" not in q:
         q["ts"] = str(_index_ts())
@@ -177,7 +172,6 @@ def _root_redirect_or_serve(request: Request):
         new_url = urlunparse(parsed._replace(query=urlencode(q)))
         return RedirectResponse(new_url, status_code=302)
 
-    # ts 있으면 → index.html 직접 서빙(200 OK)
     idx = FRONTEND_DIR / "index.html"
     if not idx.exists():
         raise HTTPException(404, detail=f"{idx} not found")
@@ -191,12 +185,9 @@ def _root_redirect_or_serve(request: Request):
         },
     )
 
-# ---------- 정적 파일 마운트 ----------
-# public/maps 가 없으면 자동 생성
 (PUBLIC_DIR / "maps").mkdir(parents=True, exist_ok=True)
 app.mount("/maps", StaticFiles(directory=str(PUBLIC_DIR / "maps"), html=False), name="maps")
 
-# 프런트 정적 자산(번들, assets 등)
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 else:
@@ -204,7 +195,6 @@ else:
     def _no_frontend():
         return {"ok": True, "msg": f"frontend not found at {FRONTEND_DIR}"}
 
-# ---------- 스타트업 ----------
 @app.on_event("startup")
 def _startup():
     # MQTT 브로커 연결
@@ -213,7 +203,6 @@ def _startup():
     mqtt_bus.set_pose_sink(_pose_sink)
 
     mqtt_bus.start()
-    # 맵 관련 JSON 생성
     try:
         generate_wall_and_meta()
     except Exception as e:

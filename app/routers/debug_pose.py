@@ -1,4 +1,3 @@
-# app/routers/debug_pose.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -28,6 +27,6 @@ async def inject_pose(req: InjectPoseReq):
         **({"theta": float(req.theta)} if req.theta is not None else {}),
         "frame": frame,
     }
-    # 바로 트윈으로 브로드캐스트
+
     await ws_manager.broadcast_json(payload)
     return {"ok": True, "sent": payload}

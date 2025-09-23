@@ -8,7 +8,7 @@ async def pose_ws(ws: WebSocket):
     await ws_manager.connect(ws)
     try:
         while True:
-            await ws.receive_text()   # 클라이언트가 아무것도 안 보내도 OK
+            await ws.receive_text()
     except Exception:
         pass
     finally:

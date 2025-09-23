@@ -1,4 +1,3 @@
-# app/map_generator.py
 import subprocess, sys, os
 from pathlib import Path
 
@@ -19,7 +18,7 @@ def generate_wall_and_meta(timeout: int = 120) -> None:
     try:
         proc = subprocess.run(
             [sys.executable, str(GEN_PATH)],
-            cwd=str(BASE_DIR),          # 스크립트가 public/ 상대경로를 쓴다면 app/ 기준이어야 함
+            cwd=str(BASE_DIR),
             env=env,
             capture_output=True,
             text=True,

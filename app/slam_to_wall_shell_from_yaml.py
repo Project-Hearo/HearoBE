@@ -1,7 +1,5 @@
 """
-slam_to_wall_shell_from_yaml.py
-────────────────────────────────────────
-사용법:  python slam_to_wall_shell_from_yaml.py    (인자 없음)
+사용법:  python slam_to_wall_shell_from_yaml.py
 
 - public/map-config.json 의 active 프로필을 읽어
   - (A) "yaml": "maps/xxx.yaml"  이면 YAML에서 image/resolution/origin 파싱
@@ -16,53 +14,37 @@ import cv2
 import numpy as np
 import yaml
 
-# ===== 경로/설정 (프로젝트에 맞게 한 번만 수정) ==========================
 BASE_DIR     = Path(__file__).resolve().parent          # ./app
 CONFIG_PATH  = (BASE_DIR.parent / "public" / "map-config.json").resolve()
 OUTPUT_DIR   = (BASE_DIR.parent / "public").resolve()
 OUT_WALL     = OUTPUT_DIR / "wall_shell.json"
 OUT_META     = OUTPUT_DIR / "meta.json"
 OUT_OBSTACLES = OUTPUT_DIR / "obstacles.json"
-# ======================================================================
 
-# ===== 외곽/윤곽 추출 파라미터 (기본값으로 복원 권장) ----------------
 CLOSE_KERNEL_SIZE = 5
 CLOSE_ITER = 2
 AREA_MIN_RATIO = 0.01
 APPROX_EPS_RATIO = 0.004
 OBSTACLE_MIN_AREA_PX = 30
 
-# ----- 벽 두께(픽셀 단위) ------------------------------------------
 DEFAULT_WALL_THICK_PX = 6.5
 
-# ----- 회색 장애물 감지 임계값 -------------------------------
 GRAY_THRESHOLD_LOW = 50
 GRAY_THRESHOLD_HIGH = 220
 
 
-# --------------------------------------------------------------------
-
-
-# --- [변경됨] 새로운 바닥 추출 함수 ---
 def extract_floor_inner(gray: np.ndarray):
     """
-    '섬' 형태의 맵을 위해 로직을 변경합니다.
-    Floodfill 방식 대신, 이미지에서 가장 밝은(흰색) 영역을 직접 찾습니다.
+    '섬' 형태의 맵을 위해 로직을 변경
+    Floodfill 방식 대신, 이미지에서 가장 밝은(흰색) 영역을 직접 찾는다.
     """
-    # 1. 거의 순수한 흰색(250-255)에 해당하는 픽셀만 선택하여 바닥 마스크를 생성합니다.
-    #    SLAM 맵에서 바닥은 보통 가장 밝은 값을 가집니다.
+
     floor_mask = cv2.inRange(gray, 250, 255)
 
-    # 2. 바닥 내부의 작은 검은색 노이즈나 구멍을 메우기 위해 모폴로지 연산을 수행합니다.
-    #    이전 로직의 CLOSE_KERNEL_SIZE, CLOSE_ITER를 여기서 활용합니다.
     kern = cv2.getStructuringElement(cv2.MORPH_RECT, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
     floor_mask = cv2.morphologyEx(floor_mask, cv2.MORPH_CLOSE, kern, iterations=CLOSE_ITER)
 
     return floor_mask
-
-
-# --- [여기까지 변경] ---
-
 
 def load_config_profile(config_path: Path) -> dict:
     with open(config_path, "r", encoding="utf-8") as f:

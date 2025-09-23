@@ -13,7 +13,6 @@ router = APIRouter(prefix="/sound-events", tags=["Sound Events"])
 logger = logging.getLogger("hearo.sound")
 
 def now_utc_iso() -> str:
-    # 2025-09-16T14:11:22.123+00:00 형태 (UTC)
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 @router.post("/", response_model=schemas.SoundEventResponse)
 def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db)):
@@ -47,7 +46,6 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
     user_name = getattr(user, "name", None) if user else None
     who = f"{user_name}님" if user_name else f"사용자(ID:{event.user_id})"
 
-    # 사용자 푸시(있으면)
     if user and getattr(user, "device_token", None):
         send_fcm_v1(
             token=user.device_token,
@@ -58,7 +56,6 @@ def create_event(event: schemas.SoundEventCreate, db: Session = Depends(get_db))
 
         print("user의 FCM 토큰이 없습니다. (사용자 푸시는 스킵)")
 
-    # 보호자 조회
     guardian_ids = []
     guardians = []
     try:

@@ -7,7 +7,6 @@ def send_fcm_v1(token: str, title: str, body: str):
 
     service_account_path = "app/service_account.json"
 
-    # 서비스 계정으로 인증
     credentials = service_account.Credentials.from_service_account_file(
         service_account_path,
         scopes=["https://www.googleapis.com/auth/firebase.messaging"]
@@ -17,7 +16,6 @@ def send_fcm_v1(token: str, title: str, body: str):
 
     access_token = credentials.token
 
-    # 메시지 전송
     project_id = credentials.project_id
     url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
 
