@@ -4,7 +4,6 @@ from google.oauth2 import service_account
 import google.auth.transport.requests
 
 def send_fcm_v1(token: str, title: str, body: str):
-
     service_account_path = "app/service_account.json"
 
     credentials = service_account.Credentials.from_service_account_file(
@@ -13,7 +12,6 @@ def send_fcm_v1(token: str, title: str, body: str):
     )
     request = google.auth.transport.requests.Request()
     credentials.refresh(request)
-
     access_token = credentials.token
 
     project_id = credentials.project_id
